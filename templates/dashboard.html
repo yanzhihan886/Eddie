@@ -1,0 +1,41 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-head"><div><div class="eyebrow">SELLER INTELLIGENCE / OVERVIEW</div><h1>经营总览</h1><p>把已导入的订单、退款和费用放到同一套口径里查看。</p></div><div class="page-actions"><a class="button outline" href="{{ url_for('guide_page') }}">新手指南</a><a class="button primary" href="{{ url_for('imports_page') }}">＋ 导入经营报表</a></div></div>
+<form class="filterbar" method="get" action="{{ url_for('dashboard') }}">
+  <label>店铺<select name="store_id"><option value="">全部店铺</option>{% for s in stores %}<option value="{{ s.id }}" {% if selected_store==s.id %}selected{% endif %}>{{ s.platform }} · {{ s.name }}</option>{% endfor %}</select></label>
+  <label>平台<select name="platform"><option value="">全部平台</option>{% for p in platforms %}<option value="{{ p }}" {% if selected_platform==p %}selected{% endif %}>{{ p }}</option>{% endfor %}</select></label>
+  <label>开始日期<input type="date" name="start" value="{{ start }}"></label><label>结束日期<input type="date" name="end" value="{{ end }}"></label>
+  <button class="button secondary" type="submit">应用筛选</button>
+  <a class="button outline" href="{{ url_for('report_download',store_id=selected_store or '',platform=selected_platform or '',start=start,end=end) }}">⇩ 导出 Excel</a>
+</form>
+{% if not stores %}<section class="empty-state"><div class="empty-icon">▣</div><h2>先添加一个店铺</h2><p>店铺数据彼此隔离。创建店铺后，再导入它的订单、成本和账单文件。</p><a class="button primary" href="{{ url_for('store_page') }}">创建店铺</a></section>{% else %}
+<section class="status-strip {% if summary.completeness.complete %}good{% else %}caution{% endif %}"><span class="status-dot"></span><div><strong>{{ summary.completeness.label }}</strong><span>统计期间 {{ start }} 至 {{ end }} · 订单按下单日，退款/费用按各自发生日计入</span></div><span class="status-right">{{ summary.open_issue_count }} 项待处理异常</span></section>
+{% if summary.completeness.missing %}<section class="notice warning"><strong>利润完整性提示</strong><span>{{ summary.completeness.missing|join('；') }}。当前显示的是已知项目口径估算，不是完整利润。</span><a href="{{ url_for('costs_page') }}">补充成本 →</a></section>{% endif %}
+<section class="metric-grid">
+  <article class="metric-card"><div class="metric-label">商品销售额 <span>↗</span></div><div class="metric-value">{{ fmt_money(summary.gross_sales_fen) }}</div><div class="metric-sub">有效订单 · {{ summary.order_count }} 笔</div></article>
+  <article class="metric-card"><div class="metric-label">确认退款 <span class="metric-mark">−</span></div><div class="metric-value">{{ fmt_money(summary.refund_fen) }}</div><div class="metric-sub">退款完成日期口径 · {{ summary.refund_count }} 笔</div></article>
+  <article class="metric-card"><div class="metric-label">净销售额 <span>∑</span></div><div class="metric-value">{{ fmt_money(summary.net_sales_fen) }}</div><div class="metric-sub">销售额减本期确认退款</div></article>
+  <article class="metric-card"><div class="metric-label">已匹配商品成本 <span>◇</span></div><div class="metric-value">{{ fmt_money(summary.known_cost_fen) }}</div><div class="metric-sub">{% if summary.completeness.missing_costs %}{{ summary.completeness.missing_costs|length }} 个 SKU 缺成本{% else %}按 SKU 与成本有效期匹配{% endif %}</div></article>
+  <article class="metric-card"><div class="metric-label">已导入平台费用 <span>↘</span></div><div class="metric-value">{{ fmt_money(summary.fee_fen) }}</div><div class="metric-sub">{{ summary.fee_record_count }} 条 · 未导入部分不会补零</div></article>
+  <article class="metric-card"><div class="metric-label">其他经营费用 <span>＋</span></div><div class="metric-value">{{ fmt_money(summary.expense_fen) }}</div><div class="metric-sub">{{ summary.expense_record_count }} 条已导入费用</div></article>
+  <article class="metric-card featured"><div class="metric-label">已知项目利润估算 <span>?</span></div><div class="metric-value">{{ fmt_money(summary.known_profit_fen) }}</div><div class="metric-sub">{% if summary.profit_margin is not none %}已知项目利润率 {{ '%.1f'|format(summary.profit_margin*100) }}%{% else %}净销售额为 0，利润率不可计算{% endif %} · {{ summary.completeness.label }}</div></article>
+  <article class="metric-card"><div class="metric-label">结算记录 <span>⇄</span></div><div class="metric-value">{{ fmt_money(summary.settlement_fen) }}</div><div class="metric-sub">结算日期口径 · 不等同于净销售额</div></article>
+</section>
+<section class="content-grid wide-left">
+  <article class="panel"><div class="panel-head"><div><h2>每日销售趋势</h2><p>按下单日期汇总有效订单，退款按完成日期单独归属</p></div><span class="panel-tag">{{ trend|length }} 天</span></div>
+    {% if trend %}<div class="trend-chart">{% for d in trend %}<div class="trend-col" title="{{ d.date }}｜销售 {{ fmt_money(d.sales) }}｜退款 {{ fmt_money(d.refunds) }}"><div class="trend-bar-wrap"><div class="trend-bar" style="height:{{ d.bar }}%"></div></div><span>{{ d.date[5:] }}</span></div>{% endfor %}</div><div class="chart-legend"><i class="legend-blue"></i>商品销售额 <i class="legend-gray"></i>退款及费用按事件日计入</div>{% else %}<div class="empty-inline">当前期间没有订单数据。上传订单报表后，这里会显示趋势。</div>{% endif %}
+  </article>
+  <article class="panel"><div class="panel-head"><div><h2>待处理异常</h2><p>优先检查可能影响利润或对账的数据</p></div><a class="text-link" href="{{ url_for('issues_page') }}">查看全部 →</a></div>
+    {% if issue_rows %}<div class="issue-mini-list">{% for issue in issue_rows %}<div class="issue-mini"><span class="severity-dot {{ issue.severity }}"></span><div><strong>{{ issue.issue_type }}</strong><span>{{ issue.description[:92] }}{% if issue.description|length>92 %}…{% endif %}</span></div></div>{% endfor %}</div>{% else %}<div class="empty-inline">没有待处理异常，或还没有导入数据。</div>{% endif %}
+  </article>
+</section>
+<section class="content-grid">
+  <article class="panel"><div class="panel-head"><div><h2>商品已知项目利润</h2><p>仅统计订单期间内销售商品；缺成本项会标记</p></div><a class="text-link" href="{{ url_for('analytics_page',start=start,end=end,store_id=selected_store or '') }}">商品分析 →</a></div>
+  {% if products %}<div class="rank-list">{% for x in products %}<div class="rank-row"><div class="rank-name"><span>{{ '%02d'|format(loop.index) }}</span><strong>{{ x.product_name }}</strong><small>{{ x.sku_id }}</small></div><div class="rank-meter"><i style="width:{{ x.bar }}%"></i></div><div class="rank-value {% if x.known_profit_fen<0 %}negative{% endif %}">{{ fmt_money(x.known_profit_fen) }}</div>{% if x.missing_cost %}<em class="tag warning-tag">缺成本</em>{% endif %}</div>{% endfor %}</div><div class="chart-footnote">退款/订单费用在可关联时按商品金额比例分摊；店铺级其他费用不摊入商品利润。</div>{% else %}<div class="empty-inline">尚无可分析商品。先导入订单，并维护 SKU 成本。</div>{% endif %}</article>
+  <article class="panel"><div class="panel-head"><div><h2>平台对比</h2><p>基于当前筛选条件下已导入记录</p></div></div>
+  {% if platform_rows %}<div class="platform-table"><div class="pt-row pt-header"><span>平台</span><span>销售额</span><span>净销售</span><span>已知项目利润</span></div>{% for x in platform_rows %}<div class="pt-row"><span><b class="platform-icon">{{ loop.index }}</b>{{ x.platform }}</span><span>{{ fmt_money(x.gross_sales_fen) }}</span><span>{{ fmt_money(x.net_sales_fen) }}</span><strong class="{% if x.known_profit_fen<0 %}negative{% endif %}">{{ fmt_money(x.known_profit_fen) }}</strong></div>{% endfor %}</div>{% else %}<div class="empty-inline">暂无平台数据。</div>{% endif %}
+  <div class="mini-note">已导入平台费用 {{ fmt_money(summary.fee_fen) }} · 未分摊退款 {{ fmt_money(refund_unallocated) }} · 未分摊订单级平台费 {{ fmt_money(fee_unallocated) }} · 未分摊其他费用 {{ fmt_money(expense_unallocated) }}</div>
+  </article>
+</section>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f5f7">
+  <meta name="description" content="卖家利润助手：汇总订单、成本、退款与费用，查看经营利润估算。">
+  <title>{{ title or '卖家利润助手' }} · 卖家利润助手</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg', v='20261025-brand-mark') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css', v='20261025-brand-mark') }}">
+</head>
+<body>
+<a class="skip-link" href="#main-content">跳到主要内容</a>
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="{{ url_for('dashboard') }}" aria-label="卖家利润助手首页">
+      <img class="brand-mark" src="{{ url_for('static', filename='favicon.svg', v='20261025-brand-mark') }}" alt="" aria-hidden="true">
+      <span class="brand-copy"><strong>卖家利润助手</strong><small>经营数据工作台</small></span>
+    </a>
+    <nav class="main-nav" aria-label="主导航">
+      <a href="{{ url_for('dashboard') }}" class="nav-item {% if request.endpoint == 'dashboard' %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg><span>经营总览</span></a>
+      <a href="{{ url_for('store_page') }}" class="nav-item {% if request.endpoint == 'store_page' %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h16v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1zM3.5 9.5 5 4h14l1.5 5.5M8 9.5v2M16 9.5v2M8 20.5v-5h8v5"/></svg><span>店铺管理</span></a>
+      <a href="{{ url_for('imports_page') }}" class="nav-item {% if request.endpoint in ['imports_page','upload_preview','import_stage'] %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3m0 0L7.5 7.5M12 3l4.5 4.5M4 15.5v3A2.5 2.5 0 0 0 6.5 21h11a2.5 2.5 0 0 0 2.5-2.5v-3"/></svg><span>文件导入</span></a>
+      <a href="{{ url_for('costs_page') }}" class="nav-item {% if request.endpoint in ['costs_page','add_cost_route'] %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 8.5 5v8L12 21l-8.5-5V8zM3.5 8 12 13l8.5-5M12 13v8M8 5.5l8.5 5"/></svg><span>商品成本</span></a>
+      <a href="{{ url_for('issues_page') }}" class="nav-item {% if request.endpoint == 'issues_page' %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2.8 19h18.4L12 3zM12 9v4.5M12 17h.01"/></svg><span>对账异常</span>{% if nav_issue_count %}<span class="nav-badge" aria-label="{{ nav_issue_count }} 项待处理或待复核异常">{{ nav_issue_count if nav_issue_count < 100 else '99+' }}</span>{% endif %}</a>
+      <a href="{{ url_for('analytics_page') }}" class="nav-item {% if request.endpoint == 'analytics_page' %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5V12m5 7.5V5m5 14.5v-10m5 10V8M2.5 20.5h19"/></svg><span>经营分析</span></a>
+      <a href="{{ url_for('guide_page') }}" class="nav-item {% if request.endpoint == 'guide_page' %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.7 9a2.4 2.4 0 1 1 4 1.8c-1.1.8-1.7 1.2-1.7 2.7M12 17h.01"/></svg><span>使用指南</span></a>
+    </nav>
+    <div class="top-right"><span class="local-pill"><i aria-hidden="true"></i>{{ '公开 Demo' if demo_mode else '本机数据' }}</span></div>
+  </div>
+</header>
+{% if demo_mode %}<aside class="demo-banner" role="note"><strong>公开体验环境</strong><span>使用虚构数据；你导入的数据仅在当前浏览器会话中隔离保存，服务重启或会话过期后会清除。请勿上传真实商家数据或个人信息。</span></aside>{% endif %}
+<main class="main" id="main-content">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}<div class="flash-list" role="status">{% for category,message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}</div>{% endif %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+  <footer class="footer"><span>卖家利润助手</span><span>{% if demo_mode %}公开 Demo · 数据仅供经营估算，体验数据会定期清除{% else %}本地运行 · 数据仅供经营估算，不替代正式财务、税务或平台结算账单{% endif %}</span></footer>
+</main>
+</body>
+</html>

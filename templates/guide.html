@@ -1,0 +1,80 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="guide-hero">
+  <div class="guide-hero-copy">
+    <div class="guide-kicker"><i aria-hidden="true"></i>卖家利润助手 · 快速上手</div>
+    <h1>让每一笔经营数据，<br><span>都看得更清楚。</span></h1>
+    <p>从店铺资料和报表开始，把订单、退款、成本与费用放进同一套清晰的经营视图。</p>
+    <div class="page-actions guide-actions">
+      <a class="button primary" href="{{ start_url }}">{{ start_label }} <span aria-hidden="true">→</span></a>
+      <a class="button outline" href="#quick-start">3 分钟了解怎么用 <span aria-hidden="true">↓</span></a>
+    </div>
+    <div class="guide-promises"><span>{{ '会话数据隔离' if demo_mode else '数据留在本机' }}</span><span>确认后才写入</span><span>缺项明确提示</span></div>
+  </div>
+  <div class="guide-visual" aria-label="订单、成本和费用汇总为经营分析">
+    <div class="guide-visual-glow"></div>
+    <div class="guide-visual-card">
+      <div class="guide-visual-head"><span class="guide-window-dots"><i></i><i></i><i></i></span><span>经营数据工作流</span><span class="guide-local-mini"><i></i>{{ 'Demo' if demo_mode else '本机' }}</span></div>
+      <div class="guide-flow-list">
+        <div class="guide-flow-row"><b>01</b><span class="guide-flow-icon">↥</span><span><strong>导入经营报表</strong><small>订单 · 退款 · 费用</small></span><em>CSV / XLSX</em></div>
+        <div class="guide-flow-connector"><i></i></div>
+        <div class="guide-flow-row"><b>02</b><span class="guide-flow-icon cost">◇</span><span><strong>补充商品成本</strong><small>按 SKU 与日期匹配</small></span><em>可追溯</em></div>
+        <div class="guide-flow-connector"><i></i></div>
+        <div class="guide-flow-row result"><b>03</b><span class="guide-flow-icon result-icon">↗</span><span><strong>查看经营分析</strong><small>利润估算 · 异常 · 导出</small></span><em>一目了然</em></div>
+      </div>
+      <div class="guide-visual-foot"><span>先预览，再确认</span><span>利润口径有说明</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="guide-section" id="quick-start">
+  <div class="guide-section-head">
+    <div><div class="eyebrow">QUICK START / 4 STEPS</div><h2>四步开始，几分钟看懂流程。</h2><p>每一步都可以从这里直接打开对应页面。</p></div>
+    <span class="guide-time"><i aria-hidden="true"></i>建议先用模拟报表熟悉流程</span>
+  </div>
+  <div class="guide-steps">
+    <article class="guide-step-card">
+      <div class="guide-step-top"><span class="guide-step-number">01</span><span class="guide-step-icon">▣</span></div>
+      <h3>创建店铺</h3><p>选择平台并填写一个便于识别的店铺名称。这里只建本地档案，不会连接或登录平台账号。</p>
+      <a href="{{ url_for('store_page') }}">打开店铺管理 <span aria-hidden="true">→</span></a>
+    </article>
+    <article class="guide-step-card">
+      <div class="guide-step-top"><span class="guide-step-number">02</span><span class="guide-step-icon">↑</span></div>
+      <h3>上传并核对报表</h3><p>选择店铺和报表类型，上传 CSV、TSV 或 XLSX。检查字段映射、错误和重复记录，再确认导入。</p>
+      <a href="{{ url_for('imports_page') }}">打开文件导入 <span aria-hidden="true">→</span></a>
+    </article>
+    <article class="guide-step-card">
+      <div class="guide-step-top"><span class="guide-step-number">03</span><span class="guide-step-icon">◇</span></div>
+      <h3>维护成本，处理异常</h3><p>为 SKU 添加有效期成本；到异常页核对无法匹配的退款、费用、重复记录和结算差异。</p>
+      <div class="guide-card-links"><a href="{{ url_for('costs_page') }}">商品成本</a><a href="{{ url_for('issues_page') }}">对账异常</a></div>
+    </article>
+    <article class="guide-step-card">
+      <div class="guide-step-top"><span class="guide-step-number">04</span><span class="guide-step-icon">↗</span></div>
+      <h3>查看分析并导出</h3><p>在总览筛选日期、店铺和平台，查看销售、退款、费用与已知项目利润估算，再导出 Excel 报告。</p>
+      <div class="guide-card-links"><a href="{{ url_for('dashboard') }}">经营总览</a><a href="{{ url_for('analytics_page') }}">店铺与商品分析</a></div>
+    </article>
+  </div>
+</section>
+
+<section class="guide-section guide-demo-band">
+  <div class="guide-demo-copy"><div class="eyebrow">TRY WITH SAMPLE FILES</div><h2>第一次使用？先拿模拟报表练习。</h2><p>导入页提供六份虚构样本，覆盖订单、退款、平台费用、结算、商品成本和其他经营费用。不会代表真实店铺，也不是平台官方格式。</p></div>
+  <a class="button secondary" href="{{ url_for('imports_page') }}">前往模拟报表 <span aria-hidden="true">→</span></a>
+</section>
+
+<section class="guide-section guide-faq-section">
+  <div class="guide-section-head">
+    <div><div class="eyebrow">GOOD TO KNOW</div><h2>开始前，先了解这几件事。</h2></div>
+  </div>
+  <div class="guide-faq-grid">
+    <details class="guide-faq" open><summary>利润数字代表什么？</summary><p>它是基于已导入数据的经营估算：商品销售额减去确认退款、已匹配成本、平台费用和其他费用。缺少成本或账单时会显示不完整，不代表平台最终结算金额或会计利润。</p></details>
+    <details class="guide-faq"><summary>淘宝、拼多多和抖音报表能直接用吗？</summary><p>目前使用通用字段映射，平台官方文件格式尚未用真实脱敏样本验证。上传后请逐列核对字段含义和金额口径；随附模拟文件只用于演示流程。</p></details>
+    <details class="guide-faq"><summary>我的数据会上传到网上吗？</summary><p>{% if demo_mode %}文件会上传到公开演示服务器临时解析，数据按浏览器会话隔离，并在服务重启或会话过期后清除。请勿上传真实商家数据、订单信息或个人信息。{% else %}此版本在本机运行，文件解析、数据库保存和报告生成都在本机完成，不连接平台账号或外部服务。请妥善保管电脑中的数据库和备份。{% endif %}</p></details>
+    <details class="guide-faq"><summary>导入后发现数据不对怎么办？</summary><p>先回到导入批次核对来源文件和校验结果，再查看对账异常。重复文件会被拦截；同业务键内容变化会提示复核，不会自动覆盖已有订单。</p></details>
+  </div>
+</section>
+
+<section class="guide-end-card">
+  <div><div class="eyebrow">READY WHEN YOU ARE</div><h2>从一份报表开始。</h2><p>先预览字段和金额，确认无误后再导入。</p></div>
+  <a class="button primary" href="{{ start_url }}">{{ start_label }} <span aria-hidden="true">→</span></a>
+</section>
+{% endblock %}

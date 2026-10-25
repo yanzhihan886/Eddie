@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+.env
+.env.*
+!.env.example
+*.sqlite3*
+*.db*
+/data/staging/
+/data/exports/
+/data/backups/
+/tmp/seller-profit-assistant-demo/
+/seller-profit-assistant-source.zip
+!data/demo_reports/*.csv
+!data/demo_reports/*.md
