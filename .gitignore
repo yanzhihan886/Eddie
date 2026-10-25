@@ -14,3 +14,4 @@ __pycache__/
 /seller-profit-assistant-source.zip
 !data/demo_reports/*.csv
 !data/demo_reports/*.md
+/dist/
