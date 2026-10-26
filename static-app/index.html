@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f3f7f5">
-  <meta name="description" content="本地优先的卖家经营利润分析工具。订单、成本和费用保存在当前设备浏览器中。">
+  <meta name="description" content="帮助小商家整理订单、进货价和利润。数据只保存在当前设备的浏览器中。">
   <title>卖家利润助手 · 本地经营工作台</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./styles.css">
@@ -16,44 +16,86 @@
     <aside class="sidebar" aria-label="主导航">
       <a class="brand" href="#overview" data-nav="overview" aria-label="卖家利润助手首页">
         <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 44 44"><defs><linearGradient id="brand-gradient" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#2563eb"/><stop offset="1" stop-color="#16a085"/></linearGradient></defs><rect width="44" height="44" rx="14" fill="url(#brand-gradient)"/><path d="M14 13h16v4H18v4h10v4H18v6h-4V13Zm16 12v6h-4v-6h4Z" fill="#fff"/></svg></span>
-        <span class="brand-copy"><strong>卖家利润助手</strong><small>本地经营工作台</small></span>
+        <span class="brand-copy"><strong>卖家利润助手</strong><small>订单和利润工具</small></span>
       </a>
       <div class="side-section-label">工作台</div>
       <nav class="side-nav">
         <button class="nav-item active" data-nav="overview"><span class="nav-icon">◫</span><span>经营总览</span></button>
         <button class="nav-item" data-nav="stores"><span class="nav-icon">▣</span><span>店铺管理</span></button>
-        <button class="nav-item" data-nav="import"><span class="nav-icon">⇧</span><span>导入数据</span></button>
-        <button class="nav-item" data-nav="records"><span class="nav-icon">▤</span><span>经营记录</span></button>
+        <button class="nav-item" data-nav="import"><span class="nav-icon">⇧</span><span>导入表格</span></button>
+        <button class="nav-item" data-nav="records"><span class="nav-icon">▤</span><span>数据明细</span></button>
         <button class="nav-item" data-nav="costs"><span class="nav-icon">◇</span><span>商品成本</span></button>
-        <button class="nav-item" data-nav="issues"><span class="nav-icon">△</span><span>异常核对</span><span class="nav-count" id="nav-issue-count"></span></button>
+        <button class="nav-item" data-nav="issues"><span class="nav-icon">△</span><span>需要处理</span><span class="nav-count" id="nav-issue-count"></span></button>
       </nav>
       <div class="sidebar-spacer"></div>
       <div class="privacy-card">
         <span class="privacy-icon">⌂</span>
         <strong>数据留在本机</strong>
-        <p>订单与成本只保存在当前浏览器，不会上传到应用服务器或 AI。</p>
-        <button class="text-button" data-nav="settings">备份与设置 <span aria-hidden="true">→</span></button>
+        <p>订单和成本只保存在这台设备的浏览器里，不会传到网站或 AI。</p>
+        <p class="backup-reminder" id="sidebar-backup-status"></p>
+        <button class="text-button" data-nav="settings">备份数据 <span aria-hidden="true">→</span></button>
       </div>
-      <button class="nav-item nav-guide" data-nav="guide"><span class="nav-icon">?</span><span>使用指南</span></button>
-      <div class="sidebar-foot"><span class="status-dot"></span><span>IndexedDB 本地保存</span></div>
+      <button class="nav-item nav-guide" data-nav="guide"><span class="nav-icon">?</span><span>新手教程</span></button>
+      <div class="sidebar-foot"><span class="status-dot"></span><span>自动保存在此浏览器</span></div>
     </aside>
 
     <div class="main-column">
       <header class="topbar">
         <div class="topbar-title"><span class="eyebrow" id="top-eyebrow">SELLER PROFIT WORKSPACE</span><strong id="top-title">经营总览</strong></div>
         <div class="topbar-controls">
-          <label class="compact-control"><span>店铺</span><select id="global-store-select" aria-label="选择统计店铺"><option value="all">全部店铺</option></select></label>
-          <label class="compact-control"><span>开始日期</span><input id="global-start" type="date" aria-label="统计开始日期"></label>
-          <label class="compact-control"><span>结束日期</span><input id="global-end" type="date" aria-label="统计结束日期"></label>
-          <span class="local-pill"><i></i> 当前设备</span>
+          <label class="compact-control store-control"><span>店铺名称</span><select id="global-store-select" aria-label="选择统计店铺"><option value="all">全部店铺</option></select></label>
+          <span class="store-kind tag tag-neutral" id="global-store-kind" hidden></span>
+          <div class="date-controls" aria-label="统计日期范围">
+            <label class="compact-control"><span>开始日期</span><input id="global-start" type="date" aria-label="统计开始日期"></label>
+            <label class="compact-control"><span>结束日期</span><input id="global-end" type="date" aria-label="统计结束日期"></label>
+            <div class="date-quick-options" aria-label="快捷日期范围">
+              <button type="button" data-period="7">近 7 天</button><button type="button" data-period="30">近 30 天</button>
+              <button type="button" data-period="month">本月</button><button type="button" data-period="previous-month">上月</button>
+            </div>
+          </div>
+          <span class="local-pill" title="数据只保存在此浏览器；更换设备、浏览器或网址不会自动同步。"><i></i> 本机浏览器</span>
         </div>
       </header>
       <main id="page-content" tabindex="-1" aria-live="polite">
-        <div class="loading-state"><span class="spinner"></span><p>正在打开本地数据库…</p></div>
+        <div class="loading-state"><span class="spinner"></span><p>正在读取此浏览器里的数据…</p></div>
       </main>
-      <footer class="app-footer"><span>卖家利润助手 · 本地优先版</span><span>计算规则确定 · 不调用 AI 生成金额</span></footer>
+  <footer class="app-footer"><span>卖家利润助手 · 数据保存在当前浏览器</span><span>金额按导入数据计算</span></footer>
     </div>
   </div>
   <div class="toast-stack" id="toast-stack" aria-live="polite" aria-atomic="false"></div>
+  <dialog class="tutorial-dialog" id="welcome-tutorial" aria-labelledby="tutorial-title" aria-describedby="tutorial-description">
+    <div class="tutorial-modal">
+      <div class="tutorial-modal-head">
+        <span class="tutorial-brand"><span class="tutorial-brand-icon" aria-hidden="true">利</span><span><strong>新手使用指南</strong><small>一步一步熟悉卖家利润助手</small></span></span>
+        <button class="tutorial-close" type="button" data-action="tutorial-skip" aria-label="关闭教程">×</button>
+      </div>
+      <div class="tutorial-content">
+        <div class="tutorial-step-icon" aria-hidden="true">↗</div>
+        <div class="tutorial-kicker">首次使用 · 约 2 分钟</div>
+        <h1 id="tutorial-title">跟着页面点几步，最后看见完整结果</h1>
+        <p class="tutorial-intro" id="tutorial-description">开始后，我们会载入一套虚构样例。接下来请按提示点击高亮的菜单；每完成一步，教程再带你到下一步，最后回到经营总览看图表和利润。</p>
+        <ul class="tutorial-bullets">
+          <li>样例会放在单独的“模拟配件店（虚构数据）”里，不会覆盖你的店铺和订单。</li>
+          <li>每一步都要点击页面上高亮的菜单才能继续，也可以随时退出。</li>
+          <li>体验结束后，经营总览会保留样例结果；样例店铺会单独标记为“演示数据”。</li>
+        </ul>
+        <div class="tutorial-note"><span aria-hidden="true">i</span><p>文件和经营记录只保存在当前网址、当前浏览器中。换设备、浏览器或网址不会自动同步。</p></div>
+      </div>
+      <div class="tutorial-modal-foot tutorial-welcome-actions">
+        <button class="button secondary" type="button" data-action="tutorial-skip">先自己看看</button>
+        <button class="button" type="button" data-action="tutorial-start-demo">开始一步步体验 <span aria-hidden="true">→</span></button>
+      </div>
+    </div>
+  </dialog>
+  <div class="guided-tour" id="guided-tour" hidden aria-live="polite">
+    <div class="guided-tour-spotlight" id="guided-tour-spotlight" role="button" tabindex="0" aria-label="点击高亮菜单继续"></div>
+    <section class="guided-tour-card" id="guided-tour-card" aria-labelledby="guided-tour-title">
+      <div class="guided-tour-card-head"><span class="guided-tour-step" id="guided-tour-step"></span><button class="guided-tour-skip" type="button" data-action="guided-tour-skip">退出引导</button></div>
+      <h2 id="guided-tour-title"></h2>
+      <p id="guided-tour-copy"></p>
+      <div class="guided-tour-prompt"><span class="guided-tour-pointer" aria-hidden="true">↙</span><strong id="guided-tour-prompt"></strong></div>
+      <button class="button secondary small guided-tour-back" type="button" data-action="guided-tour-back">上一步</button>
+    </section>
+  </div>
 </body>
 </html>

@@ -41,7 +41,7 @@ let opening;
 
 export function openDatabase(name = DB_NAME) {
   if (name === DB_NAME && opening) return opening;
-  if (!globalThis.indexedDB) return Promise.reject(new Error("当前浏览器不支持 IndexedDB，无法安全保存经营数据。请使用最新版 Edge、Chrome 或 Firefox。"));
+  if (!globalThis.indexedDB) return Promise.reject(new Error("这个浏览器暂不支持保存数据。请使用最新版 Edge、Chrome 或 Firefox。"));
   const promise = new Promise((resolve, reject) => {
     let request;
     try { request = indexedDB.open(name, DB_VERSION); }
@@ -52,8 +52,8 @@ export function openDatabase(name = DB_NAME) {
         if (event.oldVersion < migration.version && event.newVersion >= migration.version) migration.apply(db, request.transaction);
       }
     };
-    request.onblocked = () => reject(new Error("数据库升级被另一个打开的页面阻止。请关闭此网站的其他标签页后重试。"));
-    request.onerror = () => reject(request.error || new Error("打开本地数据库失败。"));
+    request.onblocked = () => reject(new Error("另一个打开的页面正在使用这份数据。请关闭其他此网站的标签页，再刷新。"));
+    request.onerror = () => reject(request.error || new Error("打不开这个浏览器里的数据。请检查浏览器是否允许网站保存数据，再刷新。"));
     request.onsuccess = () => {
       const db = request.result;
       db.onversionchange = () => db.close();
@@ -67,8 +67,8 @@ export function openDatabase(name = DB_NAME) {
 function txDone(tx) {
   return new Promise((resolve, reject) => {
     tx.oncomplete = () => resolve();
-    tx.onabort = () => reject(tx.error || new Error("本地数据库事务已回滚。"));
-    tx.onerror = () => reject(tx.error || new Error("本地数据库写入失败。"));
+    tx.onabort = () => reject(tx.error || new Error("保存没有完成，原有数据没有更改。"));
+    tx.onerror = () => reject(tx.error || new Error("保存失败，原有数据没有更改。"));
   });
 }
 

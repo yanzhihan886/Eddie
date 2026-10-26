@@ -40,7 +40,7 @@ function decodeCsv(buffer) {
 }
 
 export async function sha256(buffer) {
-  if (!globalThis.crypto?.subtle) throw new Error("当前页面不支持安全文件校验。请通过 localhost 或 HTTPS 打开本应用。文件未导入。");
+  if (!globalThis.crypto?.subtle) throw new Error("当前网址无法安全检查文件。请使用 HTTPS 网址打开后重试；文件还没有导入。");
   const digest = await crypto.subtle.digest("SHA-256", buffer);
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
@@ -54,7 +54,7 @@ export async function readTabularFile(file) {
   if (extension === "csv" || extension === "tsv" || extension === "txt") {
     matrix = parseCsv(decodeCsv(buffer));
   } else if (["xlsx", "xlsm", "xls"].includes(extension)) {
-    if (!globalThis.XLSX) throw new Error("Excel 解析组件未加载。请刷新页面后重试；所有文件解析仍仅在本机进行。");
+    if (!globalThis.XLSX) throw new Error("暂时不能读取 Excel 文件。请刷新页面后重试；文件只在本机处理。");
     const workbook = XLSX.read(buffer, { type: "array", cellDates: false, dense: true, sheetRows: MAX_DATA_ROWS + 1 });
     const sheetName = workbook.SheetNames[0];
     if (!sheetName) throw new Error("Excel 文件没有可读取的工作表。");
@@ -73,7 +73,7 @@ function headerKey(value) { return String(value ?? "").trim().toLowerCase().repl
 
 export function suggestMapping(reportType, headers) {
   const spec = REPORTS[reportType];
-  if (!spec) throw new Error("请选择有效的报表类型。");
+  if (!spec) throw new Error("请选择正确的表格类型。");
   return Object.fromEntries(spec.fields.map((field) => {
     const aliases = new Set([field.key, field.label, ...field.aliases].map(headerKey));
     const found = headers.find((header) => aliases.has(headerKey(header)));
@@ -118,7 +118,7 @@ function normalizeCandidate(reportType, raw, headers, mapping, storeId, rowNumbe
     const platformOrderId = asText(requiredValue(mapped.platformOrderId, "平台订单号"));
     const orderedAt = requiredValue(parseMappedDate(mapped.orderedAt), "有效下单日期");
     const orderStatus = asText(requiredValue(mapped.orderStatus, "订单状态"));
-    const skuId = asText(requiredValue(mapped.skuId, "SKU 编号"));
+    const skuId = asText(requiredValue(mapped.skuId, "商品编号"));
     const quantityMilli = requiredValue(parseQuantityMilli(mapped.quantity), "有效销售数量");
     if (quantityMilli <= 0) throw new Error("销售数量必须大于 0");
     const unitPriceFen = parseMoneyFen(mapped.unitPrice);
@@ -143,9 +143,9 @@ function normalizeCandidate(reportType, raw, headers, mapping, storeId, rowNumbe
   } else if (reportType === "costs") {
     const effectiveFrom = parseMappedDate(mapped.effectiveFrom) || "1970-01-01";
     const effectiveTo = mapped.effectiveTo ? parseMappedDate(mapped.effectiveTo) : null;
-    if (mapped.effectiveTo && !effectiveTo) throw new Error("失效日期格式无效");
-    if (effectiveTo && effectiveTo < effectiveFrom) throw new Error("失效日期不能早于生效日期");
-    data = { storeId, skuId: asText(requiredValue(asText(mapped.skuId), "SKU 编号")), productName: asText(mapped.productName),
+    if (mapped.effectiveTo && !effectiveTo) throw new Error("截止日期格式看不懂，请检查这一列");
+    if (effectiveTo && effectiveTo < effectiveFrom) throw new Error("截止日期不能早于开始日期");
+    data = { storeId, skuId: asText(requiredValue(asText(mapped.skuId), "商品编号")), productName: asText(mapped.productName),
       unitCostFen: requiredValue(parseMoneyFen(mapped.unitCost), "有效单位成本"), effectiveFrom, effectiveTo };
     if (data.unitCostFen < 0) throw new Error("单位成本不能为负数");
   } else if (reportType === "expenses") {
@@ -154,16 +154,16 @@ function normalizeCandidate(reportType, raw, headers, mapping, storeId, rowNumbe
       allocationMethod: asText(mapped.allocationMethod) || "店铺级", platformOrderId: asText(mapped.platformOrderId) || "", skuId: asText(mapped.skuId) || "", note: asText(mapped.note) };
   } else if (reportType === "settlements") {
     data = { storeId, transactionId: asText(mapped.transactionId) || "", platformOrderId: asText(mapped.platformOrderId) || "",
-      amountFen: requiredValue(parseMoneyFen(mapped.settlementAmount), "有效结算金额"), settlementStatus: asText(requiredValue(asText(mapped.settlementStatus), "结算状态")),
-      confirmed: isSettlementConfirmed(mapped.settlementStatus), settlementDate: requiredValue(parseMappedDate(mapped.settlementDate), "有效结算日期") };
-  } else throw new Error("暂不支持此报表类型。");
+      amountFen: requiredValue(parseMoneyFen(mapped.settlementAmount), "实际到账金额"), settlementStatus: asText(requiredValue(asText(mapped.settlementStatus), "到账状态")),
+      confirmed: isSettlementConfirmed(mapped.settlementStatus), settlementDate: requiredValue(parseMappedDate(mapped.settlementDate), "到账日期") };
+  } else throw new Error("暂不支持这种表格类型。");
 
   const recordKey = stableRecordKey(reportType, data);
   return { data, recordKey, rowHash: canonicalRowHash(data), rowNumber, raw };
 }
 
 export async function prepareImport(db, file, reportType, storeId, headers, rows, mapping, fileHash) {
-  if (!REPORTS[reportType]) throw new Error("请选择报表类型。");
+  if (!REPORTS[reportType]) throw new Error("请选择表格类型。");
   const existingBatch = await getByIndex(db, "importBatches", "fileKey", [storeId, reportType, fileHash]);
   const good = [];
   const rejected = [];
@@ -228,7 +228,7 @@ export async function commitImport(db, plan) {
     bundle.rawRecords.push({ id: uuid(), batchId, rowNumber: row.rowNumber, sourceValues: row.raw, decision, validationMessage: isBad ? row.message : "" });
     if (isBad) issue(row.rowNumber, "import_validation", "warning", `第 ${row.rowNumber} 行：${row.message}`);
     else if (decision === "duplicate") issue(row.rowNumber, "duplicate_record", "info", `第 ${row.rowNumber} 行与已有数据相同，已跳过。`, "resolved");
-    else if (decision === "conflict") issue(row.rowNumber, "record_conflict", "warning", `第 ${row.rowNumber} 行的业务编号已存在，但字段值不同；原记录未被覆盖。`);
+    else if (decision === "conflict") issue(row.rowNumber, "record_conflict", "warning", `第 ${row.rowNumber} 行的订单号或流水号已存在，但内容不一样；原记录没有被改动。`);
   }
 
   if (plan.reportType === "orders") {
@@ -244,11 +244,11 @@ export async function commitImport(db, plan) {
           statusClass: candidate.data.statusClass, createdAt: importedAt, importBatchId: batchId };
         pendingOrders.set(candidate.data.platformOrderId, order);
       } else if (order.orderedAt !== candidate.data.orderedAt || order.statusClass !== candidate.data.statusClass) {
-        issue(candidate.rowNumber, "order_status_conflict", "warning", `订单 ${candidate.data.platformOrderId} 的日期或状态与现有记录不同；保留现有订单信息。`);
+        issue(candidate.rowNumber, "order_status_conflict", "warning", `订单 ${candidate.data.platformOrderId} 的日期或状态和已有记录不一样；保留了旧信息。`);
       }
       item.orderId = order.id;
       bundle.orderItems.push(item);
-      if (candidate.data.statusClass === "unknown") issue(candidate.rowNumber, "unknown_order_status", "warning", `订单 ${candidate.data.platformOrderId} 的状态“${candidate.data.orderStatus}”未识别，未计入销售。`);
+      if (candidate.data.statusClass === "unknown") issue(candidate.rowNumber, "unknown_order_status", "warning", `订单 ${candidate.data.platformOrderId} 的状态“${candidate.data.orderStatus}”看不懂，所以没有算进销售。`);
     }
     bundle.orders = [...pendingOrders.values()];
   } else {

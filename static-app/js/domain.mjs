@@ -3,22 +3,22 @@ export const CALCULATION_RULE_VERSION = "local-profit-v1";
 
 export const REPORTS = {
   orders: {
-    label: "订单明细",
+    label: "订单表",
     fields: [
       { key: "platformOrderId", label: "平台订单号", required: true, type: "text", aliases: ["订单编号", "订单号", "主订单编号", "平台订单号", "order_id", "platform_order_id"] },
       { key: "orderedAt", label: "下单日期", required: true, type: "date", aliases: ["订单日期", "下单时间", "创建时间", "付款时间", "order_date", "ordered_at"] },
       { key: "orderStatus", label: "订单状态", required: true, type: "text", aliases: ["订单状态", "交易状态", "状态", "status", "order_status"] },
-      { key: "skuId", label: "SKU 编号", required: true, type: "text", aliases: ["商品编码", "商品编号", "sku", "sku_id", "商家编码"] },
+      { key: "skuId", label: "商品编号", required: true, type: "text", aliases: ["商品编码", "商品编号", "sku", "sku_id", "商家编码"] },
       { key: "productName", label: "商品名称", required: false, type: "text", aliases: ["商品名称", "商品标题", "货品名称", "product_name"] },
       { key: "quantity", label: "销售数量", required: true, type: "quantity", aliases: ["购买数量", "商品数量", "数量", "件数", "quantity", "qty"] },
       { key: "itemAmount", label: "商品实付金额", required: false, type: "money", aliases: ["商品实付金额", "商品金额", "销售金额", "订单金额", "实付金额", "item_amount", "amount"] },
-      { key: "unitPrice", label: "商品单价（可替代金额）", required: false, type: "money", aliases: ["商品单价", "成交单价", "单价", "unit_price", "price"] },
+      { key: "unitPrice", label: "商品单价", required: false, type: "money", aliases: ["商品单价", "成交单价", "单价", "unit_price", "price"] },
       { key: "discountAmount", label: "商品优惠金额", required: false, type: "money", aliases: ["优惠金额", "商品优惠", "折扣金额", "discount_amount"] },
       { key: "platformItemId", label: "商品明细号", required: false, type: "text", aliases: ["子订单编号", "商品明细ID", "明细编号", "item_id", "platform_item_id"] },
     ],
   },
   refunds: {
-    label: "退款明细",
+    label: "退款表",
     fields: [
       { key: "platformRefundId", label: "退款单号", required: false, type: "text", aliases: ["退款单号", "售后单号", "退款编号", "refund_id"] },
       { key: "platformOrderId", label: "平台订单号", required: true, type: "text", aliases: ["订单编号", "订单号", "主订单编号", "order_id", "platform_order_id"] },
@@ -29,7 +29,7 @@ export const REPORTS = {
     ],
   },
   fees: {
-    label: "平台费用",
+    label: "平台扣费表",
     fields: [
       { key: "feeId", label: "费用记录编号", required: false, type: "text", aliases: ["费用编号", "账单编号", "流水号", "fee_id"] },
       { key: "platformOrderId", label: "平台订单号（可空）", required: false, type: "text", aliases: ["订单编号", "订单号", "关联订单号", "order_id"] },
@@ -39,36 +39,36 @@ export const REPORTS = {
     ],
   },
   costs: {
-    label: "商品成本",
+    label: "商品成本表",
     fields: [
-      { key: "skuId", label: "SKU 编号", required: true, type: "text", aliases: ["商品编码", "商品编号", "sku", "sku_id", "商家编码"] },
+      { key: "skuId", label: "商品编号", required: true, type: "text", aliases: ["商品编码", "商品编号", "sku", "sku_id", "商家编码"] },
       { key: "productName", label: "商品名称", required: false, type: "text", aliases: ["商品名称", "商品标题", "product_name"] },
       { key: "unitCost", label: "单位成本", required: true, type: "money", aliases: ["单位成本", "采购成本", "商品成本", "进货价", "成本", "unit_cost", "cost"] },
-      { key: "effectiveFrom", label: "生效日期（可空）", required: false, type: "date", aliases: ["生效日期", "开始日期", "effective_from"] },
-      { key: "effectiveTo", label: "失效日期（可空）", required: false, type: "date", aliases: ["失效日期", "结束日期", "effective_to"] },
+      { key: "effectiveFrom", label: "成本开始日期（可空）", required: false, type: "date", aliases: ["生效日期", "开始日期", "effective_from"] },
+      { key: "effectiveTo", label: "成本截止日期（可空）", required: false, type: "date", aliases: ["失效日期", "结束日期", "effective_to"] },
     ],
   },
   expenses: {
-    label: "其他经营费用",
+    label: "其他支出表",
     fields: [
       { key: "expenseId", label: "费用编号", required: false, type: "text", aliases: ["费用编号", "流水号", "expense_id"] },
       { key: "expenseType", label: "费用类型", required: true, type: "text", aliases: ["费用类型", "费用名称", "项目", "expense_type"] },
       { key: "expenseAmount", label: "费用金额", required: true, type: "money", aliases: ["费用金额", "支出金额", "金额", "expense_amount", "amount"] },
       { key: "expenseDate", label: "费用日期", required: true, type: "date", aliases: ["费用日期", "账单日期", "发生时间", "日期", "expense_date"] },
-      { key: "allocationMethod", label: "分摊方式（可空）", required: false, type: "text", aliases: ["分摊方式", "分配方式", "allocation_method"] },
+      { key: "allocationMethod", label: "费用怎么分摊（可空）", required: false, type: "text", aliases: ["分摊方式", "分配方式", "allocation_method"] },
       { key: "platformOrderId", label: "关联订单号（可空）", required: false, type: "text", aliases: ["订单号", "关联订单", "order_id"] },
-      { key: "skuId", label: "关联 SKU（可空）", required: false, type: "text", aliases: ["SKU编号", "商品编码", "sku", "sku_id"] },
+      { key: "skuId", label: "关联商品编号（可空）", required: false, type: "text", aliases: ["SKU编号", "商品编码", "sku", "sku_id"] },
       { key: "note", label: "备注（可空）", required: false, type: "text", aliases: ["备注", "说明", "note"] },
     ],
   },
   settlements: {
-    label: "结算记录",
+    label: "到账记录表",
     fields: [
-      { key: "transactionId", label: "结算流水号", required: false, type: "text", aliases: ["结算流水号", "流水号", "交易编号", "transaction_id"] },
+      { key: "transactionId", label: "到账流水号", required: false, type: "text", aliases: ["结算流水号", "流水号", "交易编号", "transaction_id"] },
       { key: "platformOrderId", label: "关联订单号（可空）", required: false, type: "text", aliases: ["订单编号", "订单号", "关联订单号", "order_id"] },
-      { key: "settlementAmount", label: "结算金额", required: true, type: "money", aliases: ["结算金额", "实际到账", "实收金额", "到账金额", "settlement_amount", "amount"] },
-      { key: "settlementStatus", label: "结算状态", required: true, type: "text", aliases: ["结算状态", "账单状态", "状态", "status"] },
-      { key: "settlementDate", label: "结算日期", required: true, type: "date", aliases: ["结算日期", "到账日期", "账单日期", "结算时间", "date"] },
+      { key: "settlementAmount", label: "实际到账金额", required: true, type: "money", aliases: ["结算金额", "实际到账", "实收金额", "到账金额", "settlement_amount", "amount"] },
+      { key: "settlementStatus", label: "到账状态", required: true, type: "text", aliases: ["结算状态", "账单状态", "状态", "status"] },
+      { key: "settlementDate", label: "到账日期", required: true, type: "date", aliases: ["结算日期", "到账日期", "账单日期", "结算时间", "date"] },
     ],
   },
 };
@@ -212,10 +212,10 @@ export function calculateSummary(data, { storeId = "all", start, end }) {
   const unknownCount = orders.filter((o) => o.statusClass === "unknown" && o.orderedAt >= start && o.orderedAt <= end).length;
   const settlementFen = data.settlements.filter((r) => allowed.has(r.storeId) && r.confirmed && r.settlementDate >= start && r.settlementDate <= end).reduce((sum, r) => sum + r.amountFen, 0);
   const missingInputs = [];
-  if (missingCosts.size) missingInputs.push("有已售 SKU 缺少有效成本");
+  if (missingCosts.size) missingInputs.push("有些已售商品还没有进货价");
   const coverage = new Set(data.importBatches.filter((b) => allowed.has(b.storeId) && b.coverageStart <= end && b.coverageEnd >= start).map((b) => b.reportType));
-  if (!coverage.has("fees")) missingInputs.push("此期间没有平台费用导入批次");
-  if (!coverage.has("expenses")) missingInputs.push("此期间没有其他费用导入批次");
+  if (!coverage.has("fees")) missingInputs.push("这段时间还没有导入平台扣费表");
+  if (!coverage.has("expenses")) missingInputs.push("这段时间还没有导入其他支出表");
 
   return {
     start, end, storeIds: [...allowed], grossSalesFen, refundFen, netSalesFen,
@@ -303,7 +303,7 @@ export function reconcileFeeSettlementIssues(data, now = new Date().toISOString(
   for (const mismatch of findFeeSettlementMismatches(data)) {
     const stableKey = `fee-settlement|${mismatch.storeId}|${mismatch.platformOrderId}`;
     const old = previous.get(stableKey);
-    const description = `订单 ${mismatch.platformOrderId} 的简化结算与已导入销售、退款和平台费用相差 ${formatFen(mismatch.differenceFen)}；请对照平台账单复核。`;
+    const description = `订单 ${mismatch.platformOrderId} 的预计到账与表格里的实际到账相差 ${formatFen(mismatch.differenceFen)}。请打开平台账单检查。`;
     if (!old) {
       updates.push({ id: `derived-${encodeURIComponent(stableKey)}`, stableKey, storeId: mismatch.storeId,
         issueType: "fee_settlement_mismatch", severity: "warning", status: "open", description,
@@ -316,7 +316,7 @@ export function reconcileFeeSettlementIssues(data, now = new Date().toISOString(
     }
   }
   for (const [stableKey, old] of previous) {
-    if (old.status !== "resolved") updates.push({ ...old, status: "resolved", resolutionNote: "源数据变更后，简化结算差异不再出现。", resolvedAt: now, updatedAt: now });
+      if (old.status !== "resolved") updates.push({ ...old, status: "resolved", resolutionNote: "更新表格后，这笔金额差异已经消失。", resolvedAt: now, updatedAt: now });
   }
   return updates;
 }
@@ -349,7 +349,7 @@ export function reconcileMissingCostIssues(data, now = new Date().toISOString())
   for (const missing of missingBySku.values()) {
     const stableKey = `missing-cost|${missing.storeId}|${missing.skuId}`;
     const dates = missing.dates.sort();
-    const description = `SKU ${missing.skuId} 在 ${dates[0]} 至 ${dates.at(-1)} 的有效订单中没有匹配单位成本；对应 ${missing.quantityMilli / 1000} 件商品的利润估算不完整。`;
+    const description = `商品编号 ${missing.skuId} 在 ${dates[0]} 至 ${dates.at(-1)} 没有填写进货价；涉及 ${missing.quantityMilli / 1000} 件商品，利润暂不完整。`;
     const old = previous.get(stableKey);
     if (!old) {
       updates.push({ id: `derived-${encodeURIComponent(stableKey)}`, stableKey, storeId: missing.storeId,
@@ -361,7 +361,7 @@ export function reconcileMissingCostIssues(data, now = new Date().toISOString())
     }
   }
   for (const old of previous.values()) {
-    if (old.status !== "resolved") updates.push({ ...old, status: "resolved", resolutionNote: "已补充覆盖相关订单日期的 SKU 成本。", resolvedAt: now, updatedAt: now });
+    if (old.status !== "resolved") updates.push({ ...old, status: "resolved", resolutionNote: "已补上这段时间使用的商品进货价。", resolvedAt: now, updatedAt: now });
   }
   return updates;
 }
