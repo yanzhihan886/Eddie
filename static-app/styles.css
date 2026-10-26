@@ -504,3 +504,177 @@ tbody tr:hover td { background: #fbfdfc; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* Conclusion-first overview: keep the answer and losing products above the fold. */
+.app-shell[data-page="overview"] .topbar { min-height: 62px; padding-block: 8px; }
+.app-shell[data-page="overview"] .topbar-title .eyebrow { display: none; }
+.app-shell[data-page="overview"] .date-controls { display: none; }
+.app-shell[data-page="overview"] #page-content { padding-top: 13px; }
+.overview-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 34px; margin-bottom: 9px; color: #52645c; font-size: 13px; }
+.overview-toolbar-actions { display: flex; align-items: center; justify-content: end; flex-wrap: wrap; gap: 8px; }
+.discovery-badge { display: inline-flex; align-items: center; min-height: 30px; padding: 0 10px; border: 1px solid #d5ebe1; border-radius: 99px; background: #f0faf5; color: #176b56; font-size: 13px; font-weight: 700; white-space: nowrap; }
+.profit-conclusion { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(340px, .9fr); align-items: center; gap: 22px; margin-bottom: 12px; padding: 18px 22px; border: 1px solid #cfe8db; border-radius: 20px; background: linear-gradient(115deg, #f1faf5, #fff 72%); box-shadow: 0 10px 30px rgba(23, 85, 62, .07); }
+.profit-conclusion.loss { border-color: #f0d1d0; background: linear-gradient(115deg, #fff1f0, #fff 72%); }
+.profit-conclusion.thin { border-color: #efdfbc; background: linear-gradient(115deg, #fff8e9, #fff 72%); }
+.profit-conclusion.neutral { border-color: #dce6e1; background: linear-gradient(115deg, #f5f8f6, #fff 72%); }
+.profit-conclusion-label { color: #53665d; font-size: 13px; font-weight: 750; }
+.profit-conclusion-main h2 { margin: 2px 0 4px; color: #14694f; font-size: clamp(27px, 3vw, 40px); line-height: 1.12; letter-spacing: -.045em; font-variant-numeric: tabular-nums; }
+.profit-conclusion.loss .profit-conclusion-main h2 { color: #ac3437; }
+.profit-conclusion.thin .profit-conclusion-main h2 { color: #98600e; }
+.profit-conclusion.neutral .profit-conclusion-main h2 { color: #33473f; }
+.profit-conclusion-main p { margin: 0 0 4px; color: #394f46; font-size: 14px; font-weight: 650; }
+.profit-conclusion-main small { display: block; color: #596b63; font-size: 11px; line-height: 1.45; }
+.profit-support-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.profit-support-metrics > div { display: grid; align-content: center; gap: 3px; min-width: 0; min-height: 72px; padding: 9px 10px; border: 1px solid rgba(203, 222, 212, .8); border-radius: 12px; background: rgba(255, 255, 255, .8); }
+.profit-support-metrics span { color: #53665d; font-size: 13px; font-weight: 700; }
+.profit-support-metrics strong { overflow: hidden; color: #20352d; font-size: 18px; line-height: 1.15; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.profit-support-metrics small { color: #596b63; font-size: 10px; line-height: 1.3; }
+.loss-products-card { margin-bottom: 12px; padding: 15px 17px 13px; border: 1px solid #ead8d5; border-radius: 18px; background: #fff; box-shadow: var(--shadow); }
+.loss-products-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.loss-products-heading h2 { margin: 1px 0 0; color: #293d35; font-size: 17px; line-height: 1.3; letter-spacing: -.025em; }
+.loss-products-heading p { margin: 3px 0 0; color: #53655d; font-size: 13px; line-height: 1.4; }
+.loss-products-heading .section-eyebrow { color: #865351; font-size: 13px; }
+.loss-total-pill { flex: 0 0 auto; padding: 7px 10px; border-radius: 99px; background: #fff0ef; color: #a83a38; font-size: 12px; font-weight: 800; white-space: nowrap; }
+.loss-products-list { display: grid; gap: 6px; }
+.loss-product-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 14px; align-items: center; min-width: 0; padding: 8px 11px; border: 1px solid #f0e9e7; border-radius: 12px; background: #fffdfd; }
+.loss-product-name { display: flex; align-items: baseline; flex-wrap: wrap; gap: 3px 10px; min-width: 0; }
+.loss-product-name strong { overflow: hidden; max-width: min(100%, 320px); color: #273b33; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.loss-product-name small { color: #53655d; font-size: 13px; white-space: nowrap; }
+.loss-product-amount { grid-column: 2; grid-row: 1; color: #ae3639; font-size: 15px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.loss-product-reason { grid-column: 1; display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+.loss-product-reason span { flex: 0 0 auto; color: #61736b; font-size: 12px; }
+.loss-product-reason strong { overflow: hidden; color: #5b413f; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.loss-product-advice { grid-column: 2; grid-row: 2; display: flex; align-items: center; justify-content: end; gap: 9px; min-width: 0; }
+.loss-product-advice > span { overflow: hidden; color: #435a50; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.loss-product-advice .button { flex: 0 0 auto; }
+.more-loss-products { margin-top: 7px; border-top: 1px solid #f0e9e7; }
+.more-loss-products summary { padding: 9px 4px 2px; color: #53655d; font-size: 13px; font-weight: 700; cursor: pointer; }
+.more-loss-products[open] { display: grid; gap: 6px; }
+.more-loss-products[open] .loss-product-row { margin-top: 2px; }
+.no-loss-copy { margin: 0; padding: 14px 12px; border-radius: 11px; background: #f1faf5; color: #23634f; font-size: 14px; font-weight: 650; }
+.uncertain-cost-note { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; padding: 8px 10px; border-radius: 10px; background: #fff8eb; color: #73551b; font-size: 12px; }
+.uncertain-products-details { margin-top: 7px; border-top: 1px solid #eee8dc; }
+.uncertain-products-details > summary { padding: 8px 4px 1px; color: #73551b; font-size: 12px; font-weight: 700; cursor: pointer; }
+.uncertain-product-list { display: grid; gap: 5px; margin-top: 6px; }
+.uncertain-product-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 9px; border: 1px solid #f0e8d5; border-radius: 10px; background: #fffcf5; }
+.uncertain-product-row > span { display: grid; gap: 2px; min-width: 0; }
+.uncertain-product-row strong { overflow: hidden; color: #4c4534; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.uncertain-product-row small { color: #6c6045; font-size: 11px; }
+.overview-date-card { display: grid; grid-template-columns: auto auto minmax(0, 1fr); align-items: center; gap: 12px; margin-bottom: 12px; padding: 11px 14px; border: 1px solid var(--line); border-radius: 14px; background: #fbfdfc; }
+.overview-date-label { display: grid; gap: 1px; white-space: nowrap; }
+.overview-date-label strong { color: #33483f; font-size: 13px; }
+.overview-date-label span { color: #596b63; font-size: 11px; }
+.overview-date-inputs { display: flex; gap: 7px; }
+.overview-date-inputs label { display: grid; gap: 2px; color: #53665d; font-size: 10px; }
+.overview-date-inputs input { height: 31px; padding: 0 7px; border: 1px solid var(--line-strong); border-radius: 8px; background: #fff; color: var(--ink); font-size: 12px; }
+.overview-date-card .date-quick-options { min-height: 31px; justify-content: end; }
+.thin-products-card { margin-bottom: 12px; padding: 15px 17px; }
+.thin-products-heading { display: flex; align-items: start; justify-content: space-between; gap: 12px; margin-bottom: 7px; }
+.thin-products-heading h2 { margin: 1px 0 0; font-size: 16px; }
+.thin-products-heading p { margin: 3px 0 0; color: #53655d; font-size: 13px; }
+.threshold-control { display: flex; align-items: center; gap: 6px; color: #53655d; font-size: 13px; white-space: nowrap; }
+.threshold-control input { width: 58px; height: 32px; padding: 0 7px; border: 1px solid var(--line-strong); border-radius: 8px; color: var(--ink); font-size: 13px; }
+.thin-product-list { display: grid; gap: 5px; }
+.thin-product-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid #f0e8d5; border-radius: 11px; background: #fffdf8; }
+.thin-product-row > div { display: grid; gap: 1px; min-width: 0; }
+.thin-product-row strong { overflow: hidden; color: #34483f; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.thin-product-row small, .thin-product-row > span { color: #596b63; font-size: 12px; }
+.thin-product-row > span { white-space: nowrap; }
+.overview-status, .dashboard-issues, .dashboard-backup-reminder { margin-bottom: 10px; }
+.dashboard-backup-reminder { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 13px; border: 1px solid #dce9e2; border-radius: 13px; background: #f8fcf9; }
+.dashboard-backup-reminder > div { display: grid; gap: 1px; }
+.dashboard-backup-reminder strong { color: #344c41; font-size: 13px; }
+.dashboard-backup-reminder span { color: #53665d; font-size: 12px; }
+.dashboard-backup-reminder .overdue { color: #80591f; }
+.analysis-details { margin-top: 12px; }
+.analysis-details > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #344a40; font-size: 15px; font-weight: 760; cursor: pointer; list-style: none; }
+.analysis-details > summary::-webkit-details-marker { display: none; }
+.analysis-details > summary::after { content: "＋"; color: var(--green); }
+.analysis-details[open] > summary::after { content: "−"; }
+.analysis-details > summary small { margin-left: auto; color: #596b63; font-size: 12px; font-weight: 500; }
+.analysis-details[open] > .dashboard-grid { margin-top: 15px; }
+.cost-focus-note { display: grid; gap: 3px; margin-bottom: 13px; padding: 11px 13px; border: 1px solid #cfe8db; border-radius: 12px; background: #f1faf5; color: #235b49; }
+.cost-focus-note span { color: #4c6258; font-size: 13px; }
+#focused-product-cost { background: #eef8f2; outline: 2px solid #9ccdb5; }
+.app-shell[data-page="overview"] .privacy-card .backup-reminder { display: none; }
+.visually-hidden { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border: 0 !important; }
+
+@media (max-width: 1120px) {
+  .profit-conclusion { grid-template-columns: minmax(0, 1fr) minmax(330px, .95fr); gap: 13px; }
+  .overview-date-card { grid-template-columns: auto 1fr; }
+  .overview-date-card .date-quick-options { grid-column: 1 / -1; justify-content: start; }
+}
+@media (max-width: 760px) {
+  .app-shell[data-page="overview"] .topbar { align-items: center; flex-direction: row; flex-wrap: wrap; gap: 6px; padding: 8px 14px; }
+  .app-shell[data-page="overview"] .topbar-title { flex: 0 0 auto; }
+  .app-shell[data-page="overview"] .topbar-title strong { font-size: 14px; }
+  .app-shell[data-page="overview"] .topbar-controls { width: auto; flex: 1 1 auto; justify-content: end; gap: 5px; }
+  .app-shell[data-page="overview"] .store-control { min-width: 130px; max-width: 170px; flex: 1 1 130px; }
+  .app-shell[data-page="overview"] .local-pill { display: none; }
+  .app-shell[data-page="overview"] #page-content { padding: 10px 12px 24px; }
+  .overview-toolbar { align-items: start; min-height: 27px; margin-bottom: 7px; font-size: 11px; }
+  .overview-toolbar > span { overflow: hidden; max-width: 48%; text-overflow: ellipsis; white-space: nowrap; }
+  .overview-toolbar-actions { gap: 5px; }
+  .discovery-badge { display: none; }
+  .overview-toolbar .button { min-height: 30px; padding: 0 8px; font-size: 11px; }
+  .profit-conclusion { grid-template-columns: 1fr; gap: 9px; margin-bottom: 9px; padding: 13px 14px; border-radius: 15px; }
+  .profit-conclusion-label { font-size: 13px; }
+  .profit-conclusion-main h2 { font-size: 25px; }
+  .profit-conclusion-main p { font-size: 13px; }
+  .profit-conclusion-main small { font-size: 10px; }
+  .profit-support-metrics { gap: 5px; }
+  .profit-support-metrics > div { min-height: 53px; padding: 6px 7px; }
+  .profit-support-metrics span { font-size: 11px; }
+  .profit-support-metrics strong { font-size: 14px; }
+  .profit-support-metrics small { display: none; }
+  .loss-products-card { margin-bottom: 9px; padding: 11px 11px 9px; border-radius: 15px; }
+  .loss-products-heading { align-items: start; margin-bottom: 6px; }
+  .loss-products-heading h2 { font-size: 15px; }
+  .loss-products-heading p { font-size: 11px; }
+  .loss-products-heading .section-eyebrow { font-size: 11px; }
+  .loss-total-pill { padding: 5px 7px; font-size: 10px; }
+  .loss-products-list { gap: 4px; }
+  .loss-product-row { grid-template-columns: minmax(0, 1fr) auto; gap: 3px 7px; padding: 6px 8px; border-radius: 10px; }
+  .loss-product-name { gap: 2px 6px; }
+  .loss-product-name strong { max-width: 56vw; font-size: 13px; }
+  .loss-product-name small { font-size: 11px; }
+  .loss-product-amount { font-size: 12px; }
+  .loss-product-reason { gap: 5px; }
+  .loss-product-reason span { font-size: 11px; }
+  .loss-product-reason strong { font-size: 11px; }
+  .loss-product-advice { gap: 5px; }
+  .loss-product-advice { grid-column: 1 / -1; grid-row: auto; justify-content: space-between; }
+  .loss-product-advice > span { flex: 1 1 auto; color: #435a50; font-size: 11px; line-height: 1.35; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .loss-product-advice .button { min-height: 26px; padding: 0 7px; font-size: 10px; }
+  .uncertain-cost-note { padding: 6px 8px; font-size: 10px; }
+  .uncertain-cost-note .button { min-height: 28px; font-size: 10px; }
+  .uncertain-products-details > summary { font-size: 10px; }
+  .uncertain-product-row { padding: 6px; }
+  .uncertain-product-row strong { font-size: 11px; }
+  .uncertain-product-row small { font-size: 9px; }
+  .uncertain-product-row .button { min-height: 27px; padding: 0 7px; font-size: 10px; }
+  .overview-date-card { grid-template-columns: 1fr; gap: 7px; margin-bottom: 9px; padding: 9px; }
+  .overview-date-label { display: flex; justify-content: space-between; }
+  .overview-date-inputs label { flex: 1 1 0; }
+  .overview-date-inputs input { width: 100%; }
+  .overview-date-card .date-quick-options { grid-column: auto; width: 100%; justify-content: space-between; }
+  .overview-date-card .date-quick-options button { padding-inline: 5px; font-size: 11px; }
+  .thin-products-card { margin-bottom: 9px; padding: 12px; }
+  .thin-products-heading h2 { font-size: 15px; }
+  .thin-products-heading p { font-size: 11px; }
+  .thin-product-row { grid-template-columns: minmax(0, 1fr) auto; gap: 6px; padding: 7px; }
+  .thin-product-row > span { grid-column: 1; grid-row: 2; font-size: 10px; }
+  .thin-product-row > .button { grid-column: 2; grid-row: 1 / span 2; }
+  .dashboard-backup-reminder { padding: 8px; }
+  .dashboard-backup-reminder strong { font-size: 11px; }
+  .dashboard-backup-reminder span { font-size: 10px; }
+  .analysis-details > summary small { display: none; }
+}
+@media (max-width: 420px) {
+  .overview-toolbar > span { max-width: 43%; }
+  .profit-conclusion-main h2 { font-size: 23px; }
+  .loss-products-heading { display: block; }
+  .loss-total-pill { display: inline-flex; margin-top: 5px; }
+  .loss-product-advice { grid-column: 1 / -1; grid-row: auto; justify-content: space-between; }
+  .threshold-control { font-size: 10px; }
+}

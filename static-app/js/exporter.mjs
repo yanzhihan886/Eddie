@@ -1,4 +1,5 @@
-import { findCost, formatQuantity, multiplyFenByMilli, productSummary } from "./domain.mjs";
+import { findCost, formatQuantity, multiplyFenByMilli } from "./domain.mjs";
+import { buildProfitInsights } from "./insights.mjs";
 
 const MONEY_FORMAT = '¥#,##0.00;[Red]-¥#,##0.00';
 const INTEGER_FORMAT = '#,##0';
@@ -49,7 +50,21 @@ function addTableSheet(wb, name, title, note, headers, rows, widths, numberColum
   XLSX.utils.book_append_sheet(wb, sheet, name);
 }
 
-function createOverviewSheet(wb, summary, selectedStoreName) {
+function createOverviewSheet(wb, summary, selectedStoreName, insights) {
+  const today = new Date();
+  const todayText = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const monthLabel = summary.start === `${todayText.slice(0, 7)}-01` && summary.end === todayText ? "本月" : "本期";
+  const hasPeriodActivity = summary.grossSalesFen || summary.refundFen || summary.costFen || summary.feeFen || summary.expenseFen;
+  const conclusion = !hasPeriodActivity
+    ? `${monthLabel}暂时没有可计入的销售金额`
+    : summary.knownProfitFen < 0 ? `${monthLabel}预计亏了 ${moneyLabel(Math.abs(summary.knownProfitFen))}`
+      : summary.knownProfitFen > 0 ? `${monthLabel}预计赚了 ${moneyLabel(summary.knownProfitFen)}` : `${monthLabel}暂时打平`;
+  const lossTableRows = insights.lossProducts.length
+    ? insights.lossProducts.map((row) => [clean(row.productName || row.skuId), clean(row.skuId), quantity(row.quantityMilli), yuan(Math.abs(row.profitFen)), clean(row.reason), clean(row.suggestion)])
+    : [["本期没有已确认亏损商品", "", "", "", "", ""]];
+  const uncertainTableRows = insights.uncertainProducts.length
+    ? insights.uncertainProducts.map((row) => [clean(row.productName || row.skuId), clean(row.skuId), quantity(row.quantityMilli), yuan(row.salesFen), "缺少进货成本", "补填成本后再判断"])
+    : [["没有缺少成本的商品", "", "", "", "", ""]];
   const amountRows = [
     ["商品销售额", yuan(summary.grossSalesFen), "本期已成交订单的商品金额。"],
     ["减：已确认退款", yuan(summary.refundFen), "按退款完成日期统计。"],
@@ -57,7 +72,7 @@ function createOverviewSheet(wb, summary, selectedStoreName) {
     ["减：已匹配商品成本", yuan(summary.costFen), "只扣除已填写且在下单日期有效的商品成本。"],
     ["减：平台扣费", yuan(summary.feeFen), "按费用发生日期统计。"],
     ["减：其他经营支出", yuan(summary.expenseFen), "例如推广费、包装费等已录入支出。"],
-    ["预计利润", yuan(summary.knownProfitFen), "净销售额减去以上成本和费用；资料不全时可能偏高。"],
+    ["预计利润", yuan(summary.knownProfitFen), "商品销售额减去退款、商品成本、平台扣费和其他支出；资料不全时可能偏高。"],
     ["预计利润率", summary.profitMargin === null ? "—" : summary.profitMargin, "预计利润除以净销售额。"],
   ];
   const noteRows = [
@@ -71,20 +86,23 @@ function createOverviewSheet(wb, summary, selectedStoreName) {
     ["报告说明", "根据当前浏览器里已导入的数据生成；补充或修改数据后，请重新下载。此报告是经营参考，不是会计或税务结论。"],
   ];
   const aoa = [
-    ["本期经营结果"],
+    ["本期经营结论"],
     [`${safeText(selectedStoreName)}  ·  ${summary.start} 至 ${summary.end}`],
     [],
-    ["商品销售额"],
-    [yuan(summary.grossSalesFen)],
+    [conclusion],
+    [`利润率 ${summary.profitMargin === null ? "暂无法计算" : `${(summary.profitMargin * 100).toFixed(1)}%`}  ·  预估，以平台到账为准。${summary.missingCosts.length ? ` ${summary.missingCosts.length} 件商品缺成本，利润可能偏高。` : ""}`],
     [],
-    ["预计利润"],
-    [yuan(summary.knownProfitFen)],
+    ["商品销售额", yuan(summary.grossSalesFen), "总支出（含退款）", yuan(summary.costFen + summary.feeFen + summary.expenseFen + summary.refundFen), "利润率", summary.profitMargin === null ? "—" : summary.profitMargin],
+    ["计入订单", summary.orderCount, "售出商品", quantity(summary.itemCountMilli), "实际到账", yuan(summary.settlementFen)],
     [],
-    ["预计利润率"],
-    [summary.profitMargin === null ? "—" : summary.profitMargin],
+    [`亏钱商品清单 · ${insights.lossCount} 件 · 合计亏 ${moneyLabel(insights.totalLossFen)}`],
+    ["只统计成本已填的商品；退款及店铺级费用按销售额分摊估算。"],
+    ["商品名称", "商品编号", "售出数量", "预计亏损（元）", "主要原因", "建议处理"],
+    ...lossTableRows,
     [],
-    ["计入统计的订单"],
-    [summary.orderCount],
+    [`暂时不能判断 · ${insights.uncertainProducts.length} 件商品缺少成本`],
+    ["商品名称", "商品编号", "售出数量", "商品销售额（元）", "目前缺什么", "建议处理"],
+    ...uncertainTableRows,
     [],
     ["利润是怎么算出来的"],
     ["项目", "金额（元）", "简单说明"],
@@ -93,37 +111,55 @@ function createOverviewSheet(wb, summary, selectedStoreName) {
     ["这份报告怎么看"],
     ...noteRows,
   ];
+  const lossStart = 12;
+  const uncertainHeading = 13 + lossTableRows.length;
+  const uncertainHeader = uncertainHeading + 1;
+  const uncertainStart = uncertainHeader + 1;
+  const breakdownHeading = uncertainStart + uncertainTableRows.length + 1;
+  const breakdownHeader = breakdownHeading + 1;
+  const breakdownStart = breakdownHeader + 1;
+  const noteHeading = breakdownStart + amountRows.length + 1;
+  const noteStart = noteHeading + 1;
   const sheet = XLSX.utils.aoa_to_sheet(aoa);
   sheet["!merges"] = [
     { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } }, { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } },
-    { s: { r: 3, c: 0 }, e: { r: 3, c: 2 } }, { s: { r: 3, c: 3 }, e: { r: 3, c: 5 } },
-    { s: { r: 4, c: 0 }, e: { r: 4, c: 2 } }, { s: { r: 4, c: 3 }, e: { r: 4, c: 5 } },
-    { s: { r: 6, c: 0 }, e: { r: 6, c: 2 } }, { s: { r: 6, c: 3 }, e: { r: 6, c: 5 } },
-    { s: { r: 7, c: 0 }, e: { r: 7, c: 2 } }, { s: { r: 7, c: 3 }, e: { r: 7, c: 5 } },
-    { s: { r: 9, c: 0 }, e: { r: 9, c: 2 } }, { s: { r: 9, c: 3 }, e: { r: 9, c: 5 } },
-    { s: { r: 10, c: 0 }, e: { r: 10, c: 2 } }, { s: { r: 10, c: 3 }, e: { r: 10, c: 5 } },
-    { s: { r: 12, c: 0 }, e: { r: 12, c: 2 } }, { s: { r: 12, c: 3 }, e: { r: 12, c: 5 } },
-    { s: { r: 13, c: 0 }, e: { r: 13, c: 2 } }, { s: { r: 13, c: 3 }, e: { r: 13, c: 5 } },
-    { s: { r: 15, c: 0 }, e: { r: 15, c: 5 } },
-    { s: { r: 16, c: 2 }, e: { r: 16, c: 5 } },
-    { s: { r: 26, c: 0 }, e: { r: 26, c: 5 } },
-    ...noteRows.map((_, index) => ({ s: { r: 27 + index, c: 1 }, e: { r: 27 + index, c: 5 } })),
-    ...amountRows.map((_, index) => ({ s: { r: 17 + index, c: 2 }, e: { r: 17 + index, c: 5 } })),
+    { s: { r: 3, c: 0 }, e: { r: 3, c: 5 } }, { s: { r: 4, c: 0 }, e: { r: 4, c: 5 } },
+    { s: { r: 9, c: 0 }, e: { r: 9, c: 5 } }, { s: { r: 10, c: 0 }, e: { r: 10, c: 5 } },
+    { s: { r: uncertainHeading, c: 0 }, e: { r: uncertainHeading, c: 5 } },
+    { s: { r: breakdownHeading, c: 0 }, e: { r: breakdownHeading, c: 5 } },
+    { s: { r: noteHeading, c: 0 }, e: { r: noteHeading, c: 5 } },
+    { s: { r: breakdownHeader, c: 2 }, e: { r: breakdownHeader, c: 5 } },
+    ...amountRows.map((_, index) => ({ s: { r: breakdownStart + index, c: 2 }, e: { r: breakdownStart + index, c: 5 } })),
+    ...noteRows.map((_, index) => ({ s: { r: noteStart + index, c: 1 }, e: { r: noteStart + index, c: 5 } })),
+    ...(!insights.lossCount ? [{ s: { r: lossStart, c: 0 }, e: { r: lossStart, c: 5 } }] : []),
+    ...(!insights.uncertainProducts.length ? [{ s: { r: uncertainStart, c: 0 }, e: { r: uncertainStart, c: 5 } }] : []),
   ];
-  sheet["!cols"] = [{ wch: 25 }, { wch: 17 }, { wch: 23 }, { wch: 17 }, { wch: 17 }, { wch: 17 }];
-  sheet["!rows"] = [{ hpt: 28 }, { hpt: 23 }, { hpt: 9 }, { hpt: 22 }, { hpt: 32 }, { hpt: 10 }, { hpt: 22 }, { hpt: 32 }, { hpt: 10 }, { hpt: 22 }, { hpt: 30 }, { hpt: 10 }, { hpt: 22 }, { hpt: 28 }, { hpt: 10 }, { hpt: 25 }, { hpt: 22 }, ...Array.from({ length: amountRows.length }, () => ({ hpt: 24 }))];
-  sheet["!rows"][26] = { hpt: 25 };
-  for (let row = 27; row < 27 + noteRows.length; row += 1) sheet["!rows"][row] = { hpt: 30 };
+  sheet["!cols"] = [{ wch: 28 }, { wch: 18 }, { wch: 15 }, { wch: 18 }, { wch: 34 }, { wch: 58 }];
+  sheet["!rows"] = Array.from({ length: aoa.length }, () => ({ hpt: 23 }));
+  sheet["!rows"][0] = { hpt: 28 }; sheet["!rows"][2] = { hpt: 9 }; sheet["!rows"][3] = { hpt: 34 }; sheet["!rows"][4] = { hpt: 30 };
+  sheet["!rows"][8] = { hpt: 10 }; sheet["!rows"][9] = { hpt: 26 }; sheet["!rows"][10] = { hpt: 30 };
+  sheet["!rows"][uncertainHeading] = { hpt: 26 }; sheet["!rows"][breakdownHeading] = { hpt: 26 }; sheet["!rows"][noteHeading] = { hpt: 26 };
   sheet["!views"] = [{ showGridLines: false }];
-  for (const row of [4, 7]) for (const cell of [`A${row + 1}`, `D${row + 1}`]) if (sheet[cell]) sheet[cell].z = MONEY_FORMAT;
-  if (sheet.A11 && typeof sheet.A11.v === "number") sheet.A11.z = PERCENT_FORMAT;
-  if (sheet.A14 && typeof sheet.A14.v === "number") sheet.A14.z = INTEGER_FORMAT;
-  for (let row = 17; row < 17 + amountRows.length; row += 1) {
+  for (const cell of ["B7", "D7", "F8"]) if (sheet[cell]) sheet[cell].z = MONEY_FORMAT;
+  if (sheet.F7 && typeof sheet.F7.v === "number") sheet.F7.z = PERCENT_FORMAT;
+  if (sheet.B8 && typeof sheet.B8.v === "number") sheet.B8.z = INTEGER_FORMAT;
+  if (sheet.D8 && typeof sheet.D8.v === "number") sheet.D8.z = QUANTITY_FORMAT;
+  for (let row = lossStart; row < lossStart + lossTableRows.length; row += 1) {
+    if (sheet[`C${row + 1}`] && typeof sheet[`C${row + 1}`].v === "number") sheet[`C${row + 1}`].z = QUANTITY_FORMAT;
+    if (sheet[`D${row + 1}`] && typeof sheet[`D${row + 1}`].v === "number") sheet[`D${row + 1}`].z = MONEY_FORMAT;
+  }
+  for (let row = uncertainStart; row < uncertainStart + uncertainTableRows.length; row += 1) {
+    if (sheet[`C${row + 1}`] && typeof sheet[`C${row + 1}`].v === "number") sheet[`C${row + 1}`].z = QUANTITY_FORMAT;
+    if (sheet[`D${row + 1}`] && typeof sheet[`D${row + 1}`].v === "number") sheet[`D${row + 1}`].z = MONEY_FORMAT;
+  }
+  for (let row = breakdownStart; row < breakdownStart + amountRows.length; row += 1) {
     const cell = sheet[`B${row + 1}`];
-    if (cell && typeof cell.v === "number") cell.z = row === 24 ? PERCENT_FORMAT : MONEY_FORMAT;
+    if (cell && typeof cell.v === "number") cell.z = row === breakdownStart + amountRows.length - 1 ? PERCENT_FORMAT : MONEY_FORMAT;
   }
   XLSX.utils.book_append_sheet(wb, sheet, "先看这里");
 }
+
+function moneyLabel(fen) { return `¥${(Number(fen || 0) / 100).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; }
 
 function dailyRows(data, summary) {
   const days = new Map();
@@ -158,15 +194,8 @@ function dailyRows(data, summary) {
   return rows;
 }
 
-function productRows(data, summary) {
-  const products = productSummary(data, summary);
-  const totalSales = products.reduce((sum, row) => sum + row.salesFen, 0);
-  const sharedCosts = summary.refundFen + summary.feeFen + summary.expenseFen;
-  return products.map((row) => {
-    const allocated = totalSales ? Math.round(sharedCosts * row.salesFen / totalSales) : 0;
-    const profit = row.salesFen - row.costFen - allocated;
-    return [clean(row.productName), clean(row.skuId), quantity(row.quantityMilli), yuan(row.salesFen), row.missingCost ? "未填写" : yuan(row.costFen), yuan(allocated), yuan(profit), row.salesFen ? profit / row.salesFen : "—", row.missingCost ? "缺少成本，利润可能偏高" : "已匹配成本"];
-  });
+function productRows(insights) {
+  return insights.products.map((row) => [clean(row.productName), clean(row.skuId), quantity(row.quantityMilli), yuan(row.salesFen), row.missingCost ? "未填写" : yuan(row.costFen), yuan(row.allocatedDeductionsFen), row.missingCost ? "暂不能判断" : yuan(row.profitFen), row.missingCost || !row.salesFen ? "—" : row.profitFen / row.salesFen, row.missingCost ? "缺少成本，利润可能偏高" : "已匹配成本"]);
 }
 
 function orderRows(data, summary) {
@@ -199,14 +228,15 @@ function moneyRecordRows(data, summary) {
   return rows.sort((a, b) => String(a[0]).localeCompare(String(b[0])));
 }
 
-export function createWorkbook(data, summary, selectedStoreName) {
+export function createWorkbook(data, summary, selectedStoreName, marginThresholdPercent = 10) {
   if (!globalThis.XLSX) throw new Error("Excel 导出组件未加载，请刷新页面后重试。");
   const wb = XLSX.utils.book_new();
   wb.Props = { Title: "卖家利润助手经营报告", Subject: "按当前筛选范围生成的本地经营结果", Author: "卖家利润助手（本地生成）" };
-  createOverviewSheet(wb, summary, selectedStoreName);
+  const insights = buildProfitInsights(data, summary, marginThresholdPercent);
+  createOverviewSheet(wb, summary, selectedStoreName, insights);
 
   addTableSheet(wb, "每日经营", "每日经营情况", "销售、订单和成本按下单日期统计；退款按完成日期、费用按发生日期统计。利润是已导入数据估算。", ["日期", "成交订单", "售出数量", "商品销售额", "退款", "匹配成本", "平台扣费", "其他支出", "预计利润", "预计利润率"], dailyRows(data, summary), [14, 12, 12, 16, 14, 14, 14, 14, 16, 14], { 2: QUANTITY_FORMAT, 3: MONEY_FORMAT, 4: MONEY_FORMAT, 5: MONEY_FORMAT, 6: MONEY_FORMAT, 7: MONEY_FORMAT, 8: MONEY_FORMAT, 9: PERCENT_FORMAT });
-  addTableSheet(wb, "商品表现", "商品表现排行", "商品退款和店铺级费用按商品销售额比例分摊，仅用于经营参考；缺少商品成本时，该商品利润会偏高。", ["商品名称", "商品编号", "售出数量", "商品销售额", "已匹配成本", "分摊退款及费用", "预计贡献利润", "预计利润率", "成本情况"], productRows(data, summary), [28, 18, 12, 16, 16, 18, 18, 14, 28], { 2: QUANTITY_FORMAT, 3: MONEY_FORMAT, 4: MONEY_FORMAT, 5: MONEY_FORMAT, 6: MONEY_FORMAT, 7: PERCENT_FORMAT });
+  addTableSheet(wb, "商品表现", "商品表现排行", "商品退款和店铺级费用按商品销售额比例分摊，仅用于经营参考；缺少商品成本时，该商品利润暂时无法判断。", ["商品名称", "商品编号", "售出数量", "商品销售额", "已匹配成本", "分摊退款及费用", "预计贡献利润", "预计利润率", "成本情况"], productRows(insights), [28, 18, 12, 16, 16, 18, 18, 14, 28], { 2: QUANTITY_FORMAT, 3: MONEY_FORMAT, 4: MONEY_FORMAT, 5: MONEY_FORMAT, 6: MONEY_FORMAT, 7: PERCENT_FORMAT });
   addTableSheet(wb, "订单明细", "订单和商品明细", "订单状态为“未计入”的记录不会计入本期销售。金额为导入的商品实付金额。", ["下单日期", "店铺名称", "订单编号", "订单状态", "统计处理", "商品名称", "商品编号", "商品数量", "商品金额"], orderRows(data, summary), [14, 24, 22, 18, 14, 30, 18, 12, 16], { 7: QUANTITY_FORMAT, 8: MONEY_FORMAT });
   addTableSheet(wb, "退款费用到账", "退款、费用和实际到账", "实际到账单独列示，仅供和平台账单核对，不会与预计利润重复相加。", ["日期", "店铺名称", "记录类型", "项目", "订单编号", "金额", "说明"], moneyRecordRows(data, summary), [14, 24, 16, 24, 22, 16, 32], { 5: MONEY_FORMAT });
 
@@ -220,8 +250,8 @@ export function createWorkbook(data, summary, selectedStoreName) {
   return wb;
 }
 
-export function downloadWorkbook(data, summary, selectedStoreName) {
-  const workbook = createWorkbook(data, summary, selectedStoreName);
+export function downloadWorkbook(data, summary, selectedStoreName, marginThresholdPercent = 10) {
+  const workbook = createWorkbook(data, summary, selectedStoreName, marginThresholdPercent);
   const stamp = new Date().toISOString().slice(0, 10).replaceAll("-", "");
   XLSX.writeFile(workbook, `卖家利润助手_经营报告_${stamp}.xlsx`, { compression: true });
 }

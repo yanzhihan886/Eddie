@@ -9,7 +9,17 @@
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./styles.css">
   <script src="./vendor/xlsx.full.min.js" defer></script>
-  <script type="module" src="./js/app.mjs"></script>
+  <script>
+    window.__sellerProfitAppLoadFailed = function (message) {
+      var page = document.getElementById("page-content");
+      if (!page || !page.querySelector(".loading-state")) return;
+      page.innerHTML = '<section class="card empty-state"><div class="empty-art">!</div><h2>页面没有完成启动</h2><p>' + (message || '请确认 index.html、js、vendor、styles.css 都已完整上传，并且位于网站根目录同一层。若文件齐全，请关闭其他同网址标签页、确认浏览器允许保存网站数据，再按 Ctrl+F5 刷新。') + '</p></section>';
+    };
+    window.setTimeout(function () {
+      window.__sellerProfitAppLoadFailed();
+    }, 15000);
+  </script>
+  <script type="module" src="./js/app.mjs" onerror="window.__sellerProfitAppLoadFailed('页面脚本加载失败，请重新上传完整部署包，并确认 js 文件夹内的脚本都可以通过网址打开。')"></script>
 </head>
 <body>
   <div class="app-shell" id="app-shell">

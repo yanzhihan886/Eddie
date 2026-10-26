@@ -1,8 +1,9 @@
 import { clearAllData, openDatabase, putOne, readAll, readSnapshot, writeRecords } from "./db.mjs";
-import { CALCULATION_RULE_VERSION, REPORTS, STORE_NAMES, calculateSummary, classifyOrderStatus, dedupeCandidates, findCost, findFeeSettlementMismatches, formatFen, formatQuantity, multiplyFenByMilli, normalizeDate, parseMoneyFen, periodKey, productSummary, reconcileFeeSettlementIssues, reconcileMissingCostIssues, stableRecordKey } from "./domain.mjs";
+import { CALCULATION_RULE_VERSION, REPORTS, STORE_NAMES, calculateSummary, classifyOrderStatus, dedupeCandidates, findCost, findFeeSettlementMismatches, formatFen, formatQuantity, multiplyFenByMilli, normalizeDate, parseMoneyFen, periodKey, reconcileFeeSettlementIssues, reconcileMissingCostIssues, stableRecordKey } from "./domain.mjs";
 import { commitImport, MAX_DATA_ROWS, MAX_FILE_BYTES, prepareImport, readTabularFile, sha256, suggestMapping } from "./importer.mjs";
 import { makeBackup, restoreBackup, validateBackup } from "./backup.mjs";
 import { downloadWorkbook } from "./exporter.mjs";
+import { buildProfitInsights } from "./insights.mjs";
 import { trendSvg } from "./charts.mjs";
 import { loadDemoData } from "./sample.mjs";
 
@@ -55,12 +56,18 @@ function readPrefs() {
 }
 
 const savedPrefs = readPrefs();
+const todayAtLoad = localToday();
+const migrateLegacy30DayRange = savedPrefs.overviewDefaultMigrated !== true
+  && savedPrefs.start === dateOffset(todayAtLoad, -29) && savedPrefs.end === todayAtLoad;
 const state = {
   db: null,
   page: PAGE_META[savedPrefs.page] ? savedPrefs.page : "overview",
   selectedStoreId: typeof savedPrefs.storeId === "string" ? savedPrefs.storeId : "all",
-  start: typeof savedPrefs.start === "string" ? savedPrefs.start : "",
-  end: typeof savedPrefs.end === "string" ? savedPrefs.end : "",
+  start: migrateLegacy30DayRange ? `${todayAtLoad.slice(0, 7)}-01` : typeof savedPrefs.start === "string" ? savedPrefs.start : "",
+  end: migrateLegacy30DayRange ? todayAtLoad : typeof savedPrefs.end === "string" ? savedPrefs.end : "",
+  lowMarginThreshold: Number.isFinite(Number(savedPrefs.lowMarginThreshold)) ? Math.max(0, Math.min(50, Number(savedPrefs.lowMarginThreshold))) : 10,
+  focusProduct: null,
+  overviewDefaultMigrated: true,
   guidedTourSeen: savedPrefs.guidedTourSeen === true,
   lastBackupAt: typeof savedPrefs.lastBackupAt === "string" ? savedPrefs.lastBackupAt : "",
   guidedTourActive: false,
@@ -75,12 +82,14 @@ const state = {
 };
 
 function savePrefs() {
-  const prefs = { page: state.page, storeId: state.selectedStoreId, start: state.start, end: state.end, guidedTourSeen: state.guidedTourSeen, lastBackupAt: state.lastBackupAt };
+  const prefs = { page: state.page, storeId: state.selectedStoreId, start: state.start, end: state.end, lowMarginThreshold: state.lowMarginThreshold, overviewDefaultMigrated: state.overviewDefaultMigrated, guidedTourSeen: state.guidedTourSeen, lastBackupAt: state.lastBackupAt };
   const serialized = JSON.stringify(prefs);
   if (serialized.length > 2048) return;
   try { localStorage.setItem(PREFS_KEY, serialized); }
   catch { toast("浏览器没有保存页面偏好；经营记录仍保存在此浏览器。", "warn"); }
 }
+
+if (migrateLegacy30DayRange) savePrefs();
 
 function toast(message, type = "ok", duration = 4300) {
   const node = document.createElement("div");
@@ -221,13 +230,9 @@ async function refreshData() {
 }
 
 function setDefaultPeriod(data) {
-  const dates = [
-    ...data.orders.map((row) => row.orderedAt), ...data.refunds.map((row) => row.completedAt),
-    ...data.platformFees.map((row) => row.feeDate), ...data.otherExpenses.map((row) => row.expenseDate),
-  ].filter(Boolean).sort();
-  const end = dates.at(-1) || localToday();
-  state.end = end;
-  state.start = dateOffset(end, -29);
+  const today = localToday();
+  state.end = today;
+  state.start = `${today.slice(0, 7)}-01`;
 }
 
 function selectedStoreName(data = state.data) {
@@ -245,6 +250,8 @@ function fillGlobalControls(data) {
   storeKind.textContent = selectedStore?.demo ? "演示数据" : "";
   $("#global-start").value = state.start;
   $("#global-end").value = state.end;
+  if ($("#overview-start")) $("#overview-start").value = state.start;
+  if ($("#overview-end")) $("#overview-end").value = state.end;
   const openIssues = data.issues.filter((issue) => (issue.status === "open" || issue.status === "review") && isVisibleIssue(issue, data)).length;
   $("#nav-issue-count").textContent = openIssues ? String(openIssues) : "";
   document.querySelectorAll("[data-nav]").forEach((button) => {
@@ -273,24 +280,21 @@ function matchesPreset(preset) {
   return false;
 }
 
-function updateSidebarBackupStatus(data = state.data) {
-  const node = $("#sidebar-backup-status");
-  if (!node) return;
+function backupStatus(data = state.data) {
   const hasSavedRecords = data && ["orders", "orderItems", "refunds", "platformFees", "productCosts", "otherExpenses", "settlements"].some((name) => data[name]?.length);
-  if (!hasSavedRecords) {
-    node.textContent = "添加经营数据后，可在此备份。";
-    node.classList.remove("overdue");
-    return;
-  }
-  if (!state.lastBackupAt) {
-    node.textContent = "尚未备份，建议导出一份副本。";
-    node.classList.add("overdue");
-    return;
-  }
+  if (!hasSavedRecords) return { text: "添加经营数据后，可在此备份。", overdue: false };
+  if (!state.lastBackupAt) return { text: "尚未备份，建议导出一份副本。", overdue: true };
   const backupDate = new Date(state.lastBackupAt);
   const dayCount = Number.isFinite(backupDate.valueOf()) ? Math.max(0, Math.floor((Date.now() - backupDate.valueOf()) / 86400000)) : Infinity;
-  node.classList.toggle("overdue", dayCount > 7);
-  node.textContent = dayCount > 7 ? `上次备份已过 ${dayCount} 天，建议导出最新副本。` : `上次备份：${backupDate.toLocaleDateString("zh-CN")}`;
+  return { text: dayCount > 7 ? `上次备份已过 ${dayCount} 天，建议导出最新副本。` : `上次备份：${backupDate.toLocaleDateString("zh-CN")}`, overdue: dayCount > 7 };
+}
+
+function updateSidebarBackupStatus(data = state.data) {
+  const backup = backupStatus(data);
+  document.querySelectorAll("#sidebar-backup-status, #dashboard-backup-status").forEach((node) => {
+    node.textContent = backup.text;
+    node.classList.toggle("overdue", backup.overdue);
+  });
 }
 
 function currentSummary(data = state.data) {
@@ -305,10 +309,6 @@ function pageHeading(kicker, title, description, actions = "") {
 
 function emptyState(title, text, actions = "") {
   return `<section class="card empty-state"><div class="empty-art" aria-hidden="true">◌</div><h2>${title}</h2><p>${text}</p><div class="button-row">${actions}</div></section>`;
-}
-
-function metricCard(label, value, note, symbol, tone = "") {
-  return `<article class="metric-card ${tone}"><div class="metric-label"><span>${esc(label)}</span><span class="metric-symbol" aria-hidden="true">${esc(symbol)}</span></div><strong class="metric-value">${esc(value)}</strong><span class="metric-note">${esc(note)}</span></article>`;
 }
 
 function cleanStatus(value) { return String(value ?? "").normalize("NFKC").trim().toLowerCase().replace(/[\s_—-]/g, ""); }
@@ -380,6 +380,16 @@ function financialTrend(data, summary) {
 }
 
 function previousPeriodSummary(data, summary) {
+  const today = localToday();
+  const monthStart = `${today.slice(0, 7)}-01`;
+  if (summary.start === monthStart && summary.end === today) {
+    const previousMonthLast = new Date(`${monthStart}T12:00:00`);
+    previousMonthLast.setDate(0);
+    const previousStart = `${previousMonthLast.getFullYear()}-${String(previousMonthLast.getMonth() + 1).padStart(2, "0")}-01`;
+    const previousEndDay = Math.min(Number(today.slice(8, 10)), previousMonthLast.getDate());
+    const previousEnd = `${previousStart.slice(0, 7)}-${String(previousEndDay).padStart(2, "0")}`;
+    return calculateSummary(data, { storeId: state.selectedStoreId, start: previousStart, end: previousEnd });
+  }
   const days = Math.round((Date.parse(`${summary.end}T00:00:00Z`) - Date.parse(`${summary.start}T00:00:00Z`)) / 86400000) + 1;
   const end = dateOffset(summary.start, -1);
   const start = dateOffset(end, -(Math.max(1, days) - 1));
@@ -419,33 +429,68 @@ function profitFlowValue(amount, kind) {
   return amount < 0 ? `+ ${formatFen(Math.abs(amount))}` : `− ${formatFen(amount)}`;
 }
 
-function rankProducts(products, summary) {
-  const totalSales = products.reduce((sum, row) => sum + row.salesFen, 0);
-  const commonDeduction = summary.refundFen + summary.feeFen + summary.expenseFen;
-  const rows = products.map((row) => {
-    const allocated = totalSales ? Math.round(commonDeduction * row.salesFen / totalSales) : 0;
-    const profitFen = row.salesFen - row.costFen - allocated;
-    return { ...row, profitFen, margin: row.salesFen ? profitFen / row.salesFen : null };
-  });
-  return {
-    highest: [...rows].sort((a, b) => b.profitFen - a.profitFen).slice(0, 5),
-    loss: rows.filter((row) => row.profitFen < 0).sort((a, b) => a.profitFen - b.profitFen).slice(0, 5),
-    lowMargin: rows.filter((row) => !row.missingCost && row.margin !== null).sort((a, b) => a.margin - b.margin).slice(0, 5),
-  };
+function monthRangeLabel(summary) {
+  const today = localToday();
+  if (summary.start === `${today.slice(0, 7)}-01` && summary.end === today) return "本月";
+  const end = new Date(`${today.slice(0, 7)}-01T12:00:00`);
+  end.setDate(0);
+  const lastDay = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, "0")}-${String(end.getDate()).padStart(2, "0")}`;
+  if (summary.start === `${lastDay.slice(0, 7)}-01` && summary.end === lastDay) return "上月";
+  return "本期";
 }
 
-function rankedProductList(rows, value) {
-  if (!rows.length) return `<p class="empty-inline">目前没有符合条件的商品。</p>`;
-  return `<ol class="ranked-product-list">${rows.map((row) => `<li><span class="rank-product-copy"><strong title="${esc(row.productName)}">${esc(row.productName || row.skuId)}</strong><small>${esc(row.skuId)}${row.missingCost ? " · 缺少成本" : ""}</small></span><span class="rank-product-value ${row.profitFen < 0 ? "negative" : ""}">${esc(value(row))}</span></li>`).join("")}</ol>`;
+function marginComparison(summary, previousSummary, periodLabel) {
+  if (summary.profitMargin === null) return "利润率暂时无法计算";
+  const margin = `${(summary.profitMargin * 100).toFixed(1)}%`;
+  if (previousSummary.profitMargin === null) return `利润率 ${margin} · 上期数据不足，暂时无法比较`;
+  const delta = (summary.profitMargin - previousSummary.profitMargin) * 100;
+  const movement = Math.abs(delta).toFixed(1).replace(/\.0$/, "");
+  const relation = delta > 0.05 ? `比${periodLabel === "本月" ? "上月同期" : "上期"}高 ${movement} 个百分点`
+    : delta < -0.05 ? `比${periodLabel === "本月" ? "上月同期" : "上期"}低 ${movement} 个百分点` : "和上期接近";
+  return `利润率 ${margin}，${relation}`;
+}
+
+function productAction(row, label = "查看商品") {
+  return `<button class="button secondary small" data-action="focus-product" data-target="${esc(row.target || "records")}" data-store-id="${esc(row.storeId)}" data-sku-id="${esc(row.skuId)}" data-product-name="${esc(row.productName || row.skuId)}">${esc(label)}</button>`;
+}
+
+function lossRowsMarkup(rows) {
+  return rows.map((row) => `<article class="loss-product-row">
+    <div class="loss-product-name"><strong title="${esc(row.productName)}">${esc(row.productName || row.skuId)}</strong><small>${esc(row.skuId)} · 售出 ${esc(formatQuantity(row.quantityMilli))} 件</small></div>
+    <strong class="loss-product-amount">− ${esc(formatFen(Math.abs(row.profitFen)))}</strong>
+    <div class="loss-product-reason"><span>主要原因</span><strong>${esc(row.reason)}</strong></div>
+    <div class="loss-product-advice"><span>${esc(row.suggestion)}</span>${productAction(row, row.action)}</div>
+  </article>`).join("");
+}
+
+function uncertainCostMarkup(rows) {
+  if (!rows.length) return "";
+  return `<details class="uncertain-products-details"><summary>${rows.length} 件商品没填成本，利润暂时算不准</summary><div class="uncertain-product-list">${rows.map((row) => `<div class="uncertain-product-row"><span><strong>${esc(row.productName || row.skuId)}</strong><small>${esc(row.skuId)} · 售出 ${esc(formatQuantity(row.quantityMilli))} 件 · 没填成本，结果可能偏高</small></span>${productAction({ ...row, target: "costs", action: "补填成本" }, "补填成本")}</div>`).join("")}</div></details>`;
+}
+
+function thinRowsMarkup(rows) {
+  if (!rows.length) return `<p class="empty-inline">目前没有达到薄利提醒线的商品。</p>`;
+  return `<div class="thin-product-list">${rows.slice(0, 5).map((row) => `<div class="thin-product-row">
+    <div><strong>${esc(row.productName || row.skuId)}</strong><small>${esc(row.skuId)} · 售出 ${esc(formatQuantity(row.quantityMilli))} 件</small></div>
+    <span>${row.margin === null ? "—" : `${(row.margin * 100).toFixed(1)}%`} 利润率 · ${esc(formatFen(row.profitFen))} 利润</span>
+    ${productAction(row, "查看商品")}
+  </div>`).join("")}</div>`;
+}
+
+function overviewDateControls(summary) {
+  return `<section class="overview-date-card" aria-label="选择查看时间">
+    <div class="overview-date-label"><strong>查看哪段时间</strong><span>${esc(summary.start)} 至 ${esc(summary.end)}</span></div>
+    <div class="overview-date-inputs"><label>开始<input id="overview-start" type="date" value="${esc(state.start)}"></label><label>结束<input id="overview-end" type="date" value="${esc(state.end)}"></label></div>
+    <div class="date-quick-options" aria-label="快捷日期范围"><button type="button" data-period="7">近 7 天</button><button type="button" data-period="30">近 30 天</button><button type="button" data-period="month">本月</button><button type="button" data-period="previous-month">上月</button></div>
+  </section>`;
 }
 
 function renderDashboard(data) {
   const summary = currentSummary(data);
-  const productRows = productSummary(data, summary);
+  const insights = buildProfitInsights(data, summary, state.lowMarginThreshold);
   const trend = financialTrend(data, summary);
   const previousSummary = previousPeriodSummary(data, summary);
   const composition = feeComposition(data, summary);
-  const rankings = rankProducts(productRows, summary);
   const dashboardIssues = uniqueVisibleIssues(data.issues.filter((issue) => (issue.status === "open" || issue.status === "review")
     && (state.selectedStoreId === "all" || issue.storeId === state.selectedStoreId)), data);
   if (!data.stores.length) {
@@ -453,11 +498,36 @@ function renderDashboard(data) {
       <section class="grid grid-2"><article class="card card-pad"><div class="section-title"><div><div class="section-eyebrow">推荐</div><h2>先体验一套示例数据</h2><p>示例完全虚构，只存在你的浏览器里，不会影响自己的店铺资料。</p></div></div><button class="button" data-action="load-demo">载入虚构样例</button></article>
       <article class="card card-pad"><div class="section-title"><div><div class="section-eyebrow">开始使用</div><h2>导入自己的订单</h2><p>先添加店铺名称，再选择平台导出的订单表。保存前可以先检查内容。</p></div></div><button class="button secondary" data-nav="stores">添加我的店铺</button></article></section>`;
   }
-  const margin = summary.profitMargin === null ? "—" : `${(summary.profitMargin * 100).toFixed(1)}%`;
-  const unrecognizedOrderCount = data.orders.filter((order) => summary.storeIds.includes(order.storeId) && order.orderedAt >= summary.start && order.orderedAt <= summary.end && order.statusClass === "unknown" && !isPendingOrderStatus(order.orderStatus)).length;
   const pendingOrderCount = data.orders.filter((order) => summary.storeIds.includes(order.storeId) && order.orderedAt >= summary.start && order.orderedAt <= summary.end && order.statusClass !== "valid" && isPendingOrderStatus(order.orderStatus)).length;
   const knownRecords = data.orders.length + data.refunds.length + data.platformFees.length + data.productCosts.length + data.otherExpenses.length + data.settlements.length;
   const recentBatches = [...data.importBatches].sort((a, b) => b.importedAt.localeCompare(a.importedAt)).slice(0, 5);
+  const periodLabel = monthRangeLabel(summary);
+  const hasPeriodActivity = summary.grossSalesFen || summary.refundFen || summary.costFen || summary.feeFen || summary.expenseFen;
+  const conclusionTone = !hasPeriodActivity ? "neutral" : summary.knownProfitFen < 0 ? "loss" : summary.knownProfitFen > 0 && summary.profitMargin !== null && summary.profitMargin >= state.lowMarginThreshold / 100 ? "profit" : "thin";
+  const conclusionText = !hasPeriodActivity
+    ? `${periodLabel}暂时没有可计入的销售金额`
+    : summary.knownProfitFen < 0
+      ? `${periodLabel}预计亏了 ${formatFen(Math.abs(summary.knownProfitFen))}`
+      : summary.knownProfitFen > 0
+        ? `${periodLabel}预计赚了 ${formatFen(summary.knownProfitFen)}`
+        : `${periodLabel}暂时打平`;
+  const totalOutflowFen = summary.costFen + summary.feeFen + summary.expenseFen + summary.refundFen;
+  const smallDataWarning = summary.missingInputs.length ? `还缺${summary.missingInputs.join("、")}，金额可能偏高。` : "";
+  const conclusionCard = `<section class="profit-conclusion ${conclusionTone}" aria-labelledby="profit-conclusion-title">
+    <div class="profit-conclusion-main"><span class="profit-conclusion-label">${esc(periodLabel)}经营结论</span><h2 id="profit-conclusion-title">${esc(conclusionText)}</h2>
+      <p>${esc(marginComparison(summary, previousSummary, periodLabel))}</p>
+      <small>预估，以平台到账为准。${esc(smallDataWarning)}</small>
+    </div>
+    <div class="profit-support-metrics"><div><span>商品销售额</span><strong>${esc(formatFen(summary.grossSalesFen))}</strong></div><div><span>总支出（含退款）</span><strong>${esc(formatFen(totalOutflowFen))}</strong><small>商品成本、平台扣费、其他费用及退款</small></div><div><span>利润率</span><strong>${summary.profitMargin === null ? "—" : `${(summary.profitMargin * 100).toFixed(1)}%`}</strong></div></div>
+  </section>`;
+  const lossHeading = insights.lossCount
+    ? `${insights.lossCount} 件商品正在亏钱，本期共亏 ${formatFen(insights.totalLossFen)}`
+    : "本期没有亏钱商品";
+  const lossMarkup = insights.lossCount
+    ? `${lossRowsMarkup(insights.lossProducts.slice(0, 3))}${insights.lossCount > 3 ? `<details class="more-loss-products"><summary>再看其余 ${insights.lossCount - 3} 件亏损商品</summary>${lossRowsMarkup(insights.lossProducts.slice(3))}</details>` : ""}`
+    : `<p class="no-loss-copy">本期没有已确认亏损商品。${insights.uncertainProducts.length ? `另有 ${insights.uncertainProducts.length} 件商品没填成本，暂时无法判断。` : ""}</p>`;
+  const lossCard = `<section class="loss-products-card" aria-labelledby="loss-products-title"><div class="loss-products-heading"><div><span class="section-eyebrow">先处理亏钱商品</span><h2 id="loss-products-title">${esc(lossHeading)}</h2><p>只汇总成本已填的商品；退款和店铺级费用按销售额分摊估算。</p></div><span class="loss-total-pill">本期商品亏损 ${esc(formatFen(insights.totalLossFen))}</span></div><div class="loss-products-list">${lossMarkup}</div>${uncertainCostMarkup(insights.uncertainProducts)}</section>`;
+  const thinCard = `<section class="thin-products-card card card-pad"><div class="thin-products-heading"><div><span class="section-eyebrow">利润偏薄</span><h2>薄利商品</h2><p>卖得多但赚得少的商品会列在这里。</p></div><label class="threshold-control" title="低于此利润率的商品会列为薄利，默认 10%">提醒线 <input type="number" min="0" max="50" step="1" value="${state.lowMarginThreshold}" data-low-margin-threshold aria-label="薄利提醒利润率百分比"> %</label></div>${thinRowsMarkup(insights.thinProducts)}</section>`;
   const pendingReason = pendingOrderCount ? ` 另有 ${pendingOrderCount} 个待付款订单还没成交，因此没有计入销售。` : "";
   const nextAction = !data.orders.length
     ? `<span>还没有订单，先导入订单表开始查看。</span><button class="button small" data-nav="import">开始导入</button>`
@@ -474,28 +544,28 @@ function renderDashboard(data) {
     ${dashboardIssues.length > 6 ? `<p class="dashboard-issues-more">这里显示 6 条，共 ${dashboardIssues.length} 条；点“查看全部”可继续检查。</p>` : ""}
   </details>`;
   const hasAnyData = knownRecords > 0;
-  const html = `${pageHeading("", "经营情况，一眼看清。", `统计时间：${esc(summary.start)} 至 ${esc(summary.end)} · ${esc(selectedStoreName(data))}`, `<button class="button secondary" data-action="export-xlsx">下载 Excel 报告</button>${hasAnyData ? "" : `<button class="button" data-nav="import">导入表格 <span aria-hidden="true">↗</span></button>`}`)}
-    <section class="metrics metrics-primary">
-      ${metricCard("商品销售额", formatFen(summary.grossSalesFen), "已导入订单中的商品金额", "↗", "blue")}
-      ${metricCard("预计利润", formatFen(summary.knownProfitFen), summary.complete ? "按已导入的订单、成本和费用估算" : "还缺一些成本或费用，结果可能偏高", "◒", "profit")}
-      ${metricCard("预计利润率", margin, "预计利润占销售额的比例", "%", "")}
-      ${metricCard("计入统计的订单", summary.orderCount.toLocaleString("zh-CN"), `${summary.cancelledCount} 单已取消；${unrecognizedOrderCount} 个订单状态无法识别${pendingOrderCount ? `；${pendingOrderCount} 个待付款不计入` : ""}`, "▤", "blue")}
-    </section>
+  const discoveryLabel = `${periodLabel}帮你发现了 ${formatFen(insights.totalLossFen)} 的商品亏损`;
+  const backupState = backupStatus(data);
+  const html = `<div class="overview-toolbar"><h1 class="visually-hidden">经营总览</h1><span>统计范围：${esc(summary.start)} 至 ${esc(summary.end)} · ${esc(selectedStoreName(data))}</span><div class="overview-toolbar-actions"><span class="discovery-badge">本助手${esc(discoveryLabel)}</span><button class="button secondary small" data-action="export-xlsx">下载 Excel 报告</button>${hasAnyData ? "" : `<button class="button small" data-nav="import">导入表格</button>`}</div></div>
+    ${conclusionCard}
+    ${lossCard}
+    ${overviewDateControls(summary)}
+    ${thinCard}
     ${summaryCard}
     ${dashboardIssueCard}
-    <section class="dashboard-grid">
-      <article class="card chart-card"><div class="section-title"><div><div class="section-eyebrow">每日趋势</div><h2>销售额与预计利润</h2><p>销售按下单日统计；退款、扣费和支出按各自日期计入。</p></div><span class="tag tag-blue">${trend.length} 天</span></div>
-        <div class="chart-legend"><span><i class="legend-sales"></i>销售额</span><span><i class="legend-profit"></i>预计利润</span></div>
-        <div class="period-comparison"><span>较上一周期（${esc(previousSummary.start)} 至 ${esc(previousSummary.end)}）</span>${periodDelta(summary.grossSalesFen, previousSummary.grossSalesFen, "销售额")}${periodDelta(summary.knownProfitFen, previousSummary.knownProfitFen, "利润")}</div>${trendSvg(trend)}</article>
-      <article class="card chart-card composition-card"><div class="section-title"><div><div class="section-eyebrow">利润构成</div><h2>销售额如何变成利润</h2><p>按当前导入项目归类；未识别的费用放在“其他费用”。</p></div></div>
-        <div class="profit-flow">${composition.map(([label, amount, kind], index) => `<div class="profit-flow-step ${kind}"><span>${esc(label)}</span><strong>${esc(profitFlowValue(amount, kind))}</strong></div>${index < composition.length - 1 ? `<span class="profit-flow-arrow" aria-hidden="true">→</span>` : ""}`).join("")}</div>
-      </article>
-    </section>
-    <section class="card card-pad product-rankings"><div class="section-title"><div><div class="section-eyebrow">商品排行</div><h2>哪些商品贡献利润，哪些需要留意</h2><p>利润估算会按销售额分摊未关联商品的退款和费用；缺成本时会偏高。</p></div><button class="button ghost small" data-nav="costs">查看商品成本 →</button></div>
-      <div class="product-rank-grid"><article><h3>利润最高 · 前 5</h3>${rankedProductList(rankings.highest, (row) => formatFen(row.profitFen))}</article><article><h3>亏损商品 · 前 5</h3>${rankedProductList(rankings.loss, (row) => formatFen(row.profitFen))}</article><article><h3>低毛利 · 前 5</h3>${rankedProductList(rankings.lowMargin, (row) => row.margin === null ? "—" : `${(row.margin * 100).toFixed(1)}%`)}</article></div>
-    </section>
-    ${summary.missingCosts.length ? `<button class="missing-cost-reminder" data-nav="costs"><span>${summary.missingCosts.length} 个商品未填成本，利润可能偏高</span><span>去补充商品成本 →</span></button>` : ""}
-    <section class="card card-pad recent-imports"><div class="section-title"><div><div class="section-eyebrow">最近导入</div><h2>刚才导入的表格</h2><p>已导入 ${data.importBatches.length} 次 · 保存了 ${knownRecords.toLocaleString("zh-CN")} 条记录</p></div><button class="button ghost small" data-nav="import">继续导入 →</button></div>
+    <aside class="dashboard-backup-reminder"><div><strong>记得留一份本机数据备份</strong><span id="dashboard-backup-status">${esc(backupState.text)}</span></div><button class="button secondary small" data-nav="settings">管理备份</button></aside>
+    <details class="analysis-details card card-pad"><summary><span>查看详细分析</span><small>趋势、利润构成和利润较高商品</small></summary>
+      <section class="dashboard-grid">
+        <article class="card chart-card"><div class="section-title"><div><div class="section-eyebrow">每日趋势</div><h2>销售额和利润变化</h2><p>销售按下单日统计；退款、扣费和支出按各自日期计入。</p></div><span class="tag tag-blue">${trend.length} 天</span></div>
+          <div class="chart-legend"><span><i class="legend-sales"></i>销售额</span><span><i class="legend-profit"></i>预计利润</span></div>
+          <div class="period-comparison"><span>和上期比较（${esc(previousSummary.start)} 至 ${esc(previousSummary.end)}）</span>${periodDelta(summary.grossSalesFen, previousSummary.grossSalesFen, "销售额")}${periodDelta(summary.knownProfitFen, previousSummary.knownProfitFen, "利润")}</div>${trendSvg(trend)}</article>
+        <article class="card chart-card composition-card"><div class="section-title"><div><div class="section-eyebrow">利润怎么算</div><h2>收入扣掉哪些费用</h2><p>按已导入项目归类；未识别的费用放在“其他费用”。</p></div></div>
+          <div class="profit-flow">${composition.map(([label, amount, kind], index) => `<div class="profit-flow-step ${kind}"><span>${esc(label)}</span><strong>${esc(profitFlowValue(amount, kind))}</strong></div>${index < composition.length - 1 ? `<span class="profit-flow-arrow" aria-hidden="true">→</span>` : ""}`).join("")}</div>
+        </article>
+      </section>
+      <section class="card card-pad product-rankings"><div class="section-title"><div><div class="section-eyebrow">表现较好的商品</div><h2>利润较高的商品</h2></div></div><ol class="ranked-product-list">${insights.products.filter((row) => !row.missingCost && row.profitFen >= 0).sort((a, b) => b.profitFen - a.profitFen).slice(0, 5).map((row) => `<li><span class="rank-product-copy"><strong>${esc(row.productName || row.skuId)}</strong><small>${esc(row.skuId)} · 售出 ${esc(formatQuantity(row.quantityMilli))} 件</small></span><span class="rank-product-value">${esc(formatFen(row.profitFen))}</span></li>`).join("") || `<li>目前没有可列出的商品。</li>`}</ol></section>
+    </details>
+    <section class="card card-pad recent-imports"><div class="section-title"><div><div class="section-eyebrow">最近导入</div><h2>导入的表格</h2><p>已导入 ${data.importBatches.length} 次 · 保存了 ${knownRecords.toLocaleString("zh-CN")} 条记录</p></div><button class="button ghost small" data-nav="import">继续导入 →</button></div>
       ${recentBatches.length ? `<div class="table-wrap"><table><thead><tr><th>表格类型</th><th>文件名</th><th>新增条数</th><th>导入时间</th></tr></thead><tbody>${recentBatches.map((batch) => `<tr><td>${esc(REPORTS[batch.reportType]?.label || batch.reportType)}</td><td>${esc(batch.originalFilename)}</td><td>${batch.acceptedCount}</td><td>${esc(new Date(batch.importedAt).toLocaleString("zh-CN", { dateStyle: "short", timeStyle: "short" }))}</td></tr>`).join("")}</tbody></table></div>` : `<div class="empty-inline">还没有导入表格。</div>`}</section>`;
   saveCalculation(data, summary).catch((error) => presentError(error, "保存计算结果失败"));
   return html;
@@ -570,7 +640,10 @@ function renderRecords(data) {
     platformFees: ["platformFees", "平台扣费"], otherExpenses: ["otherExpenses", "其他支出"], settlements: ["settlements", "到账记录"],
   };
   const [storeNameKey, title] = categories[type] || categories.orders;
-  const rows = data[storeNameKey].filter((row) => state.selectedStoreId === "all" || row.storeId === state.selectedStoreId).slice(-200).reverse();
+  const focusedProduct = type === "orderItems" ? state.focusProduct : null;
+  const matchingRows = data[storeNameKey].filter((row) => (state.selectedStoreId === "all" || row.storeId === state.selectedStoreId)
+    && (!focusedProduct || row.skuId === focusedProduct.skuId));
+  const rows = matchingRows.slice(-200).reverse();
   const columns = {
     orders: [["platformOrderId", "订单号"], ["orderedAt", "下单日期"], ["orderStatus", "平台订单状态"], ["statusClass", "系统判断"]],
     orderItems: [["platformOrderId", "订单号"], ["skuId", "商品编号"], ["productName", "商品名称"], ["quantityMilli", "数量", "quantity"], ["amountFen", "实付金额", "money"], ["orderedAt", "下单日期"]],
@@ -579,19 +652,23 @@ function renderRecords(data) {
     otherExpenses: [["expenseId", "费用编号"], ["expenseType", "费用类型"], ["amountFen", "金额", "money"], ["expenseDate", "费用日期"], ["allocationMethod", "费用怎么分配"]],
     settlements: [["transactionId", "到账流水"], ["platformOrderId", "订单号"], ["settlementStatus", "到账状态"], ["amountFen", "实际到账", "money"], ["settlementDate", "到账日期"]],
   }[type];
-  return `${pageHeading("我的数据", "导入过的内容都在这里。", "每类最多显示最近 200 条。需要全部数据时，可以下载 Excel 报告。", `<button class="button secondary" data-action="export-xlsx">下载 Excel 报告</button>`)}
-    <section class="card card-pad"><div class="section-title"><div><h2>${title}</h2><p>共 ${data[storeNameKey].length.toLocaleString("zh-CN")} 条记录${data[storeNameKey].length > rows.length ? ` · 当前展示最近 ${rows.length} 条` : ""}</p></div><select data-record-type aria-label="切换经营记录类型">${Object.entries(categories).map(([key, value]) => `<option value="${key}" ${key === type ? "selected" : ""}>${value[1]}</option>`).join("")}</select></div>
-      ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>店铺</th>${columns.map(([, label]) => `<th>${esc(label)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr><td>${esc(storeName(data, row.storeId))}</td>${columns.map(([key, , kind]) => `<td>${esc(kind === "money" ? formatFen(row[key]) : kind === "quantity" ? `${formatQuantity(row[key])} 件` : typeof row[key] === "boolean" ? (row[key] ? "是" : "否") : key === "statusClass" ? ({ valid: "计入销售", cancelled: "已取消", ignored: "已忽略，不计入销售", unknown: isPendingOrderStatus(row.orderStatus) ? "待付款，不计入销售" : "状态无法识别" }[row[key]] || row[key]) : row[key])}</td>`).join("")}</tr>`).join("")}</tbody></table></div>` : `<div class="empty-inline">这里还没有记录。</div>`}</section>`;
+  const focusHeading = focusedProduct ? `查看“${esc(focusedProduct.productName)}”的订单` : "导入过的内容都在这里。";
+  const focusDescription = focusedProduct ? `已按商品编号 ${esc(focusedProduct.skuId)} 筛出相关商品明细。` : "每类最多显示最近 200 条。需要全部数据时，可以下载 Excel 报告。";
+  return `${pageHeading("我的数据", focusHeading, focusDescription, `${focusedProduct ? `<button class="button ghost small" data-action="clear-product-focus">查看全部</button>` : ""}<button class="button secondary" data-action="export-xlsx">下载 Excel 报告</button>`)}
+    <section class="card card-pad"><div class="section-title"><div><h2>${title}</h2><p>共 ${matchingRows.length.toLocaleString("zh-CN")} 条记录${matchingRows.length > rows.length ? ` · 当前展示最近 ${rows.length} 条` : ""}</p></div><select data-record-type aria-label="切换经营记录类型">${Object.entries(categories).map(([key, value]) => `<option value="${key}" ${key === type ? "selected" : ""}>${value[1]}</option>`).join("")}</select></div>
+      ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>店铺</th>${columns.map(([, label]) => `<th>${esc(label)}</th>`).join("")}</tr></thead><tbody>${rows.map((row, index) => `<tr ${focusedProduct && index === 0 ? 'id="focused-product-record"' : ""}><td>${esc(storeName(data, row.storeId))}</td>${columns.map(([key, , kind]) => `<td>${esc(kind === "money" ? formatFen(row[key]) : kind === "quantity" ? `${formatQuantity(row[key])} 件` : typeof row[key] === "boolean" ? (row[key] ? "是" : "否") : key === "statusClass" ? ({ valid: "计入销售", cancelled: "已取消", ignored: "已忽略，不计入销售", unknown: isPendingOrderStatus(row.orderStatus) ? "待付款，不计入销售" : "状态无法识别" }[row[key]] || row[key]) : row[key])}</td>`).join("")}</tr>`).join("")}</tbody></table></div>` : `<div class="empty-inline">${focusedProduct ? "没有找到这件商品的订单明细。" : "这里还没有记录。"}</div>`}</section>`;
 }
 
 function renderCosts(data) {
   const rows = data.productCosts.filter((row) => state.selectedStoreId === "all" || row.storeId === state.selectedStoreId).sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom));
   const skuNames = new Map(data.orderItems.map((row) => [row.skuId, row.productName]));
+  const focusedProduct = state.focusProduct?.target === "costs" ? state.focusProduct : null;
+  const focusNote = focusedProduct ? `<div class="cost-focus-note" id="product-focus-note"><strong>已定位到：${esc(focusedProduct.productName)}</strong><span>商品编号已填入表单，补上每件进货价后保存即可。</span></div>` : "";
   return `${pageHeading("商品成本", "补上进货价，利润会更接近实际。", "商品成本会按订单日期自动计算。商品编号要和订单表里的编号一致。", `<button class="button secondary" data-nav="import">导入成本表</button>`)}
-    <section class="grid grid-2"><article class="card card-pad"><div class="section-title"><div><h2>手动添加一个商品成本</h2><p>同一商品可以按日期更新进货价，之前的价格会保留。</p></div></div>
-      ${data.stores.length ? `<form data-form="add-cost" class="form-grid"><div class="field"><label for="cost-store">属于哪个店铺</label><select id="cost-store" name="storeId" required>${data.stores.map((store) => `<option value="${esc(store.id)}" ${store.id === (state.selectedStoreId === "all" ? data.stores[0].id : state.selectedStoreId) ? "selected" : ""}>${esc(store.name)}</option>`).join("")}</select></div><div class="field"><label for="cost-sku">商品编号</label><input id="cost-sku" name="skuId" maxlength="100" placeholder="照着订单表里的商品编号填写" required></div><div class="field"><label for="cost-product">商品名称</label><input id="cost-product" name="productName" maxlength="150" placeholder="${esc(skuNames.values().next().value || "可以不填")}"></div><div class="field"><label for="cost-value">每件进货价（元）</label><input id="cost-value" name="unitCost" inputmode="decimal" placeholder="例如 12.50" required></div><div class="field"><label for="cost-from">从哪天开始使用这个价格</label><input id="cost-from" name="effectiveFrom" type="date" value="${localToday()}" required></div><div class="field"><label for="cost-to">哪天停止使用（可以不填）</label><input id="cost-to" name="effectiveTo" type="date"></div><div class="field full"><button class="button" type="submit">保存这个进货价</button></div></form>` : `<div class="empty-inline">请先添加一个店铺。</div>`}</article>
+    <section class="grid grid-2"><article class="card card-pad">${focusNote}<div class="section-title"><div><h2>手动添加一个商品成本</h2><p>同一商品可以按日期更新进货价，之前的价格会保留。</p></div></div>
+      ${data.stores.length ? `<form data-form="add-cost" class="form-grid"><div class="field"><label for="cost-store">属于哪个店铺</label><select id="cost-store" name="storeId" required>${data.stores.map((store) => `<option value="${esc(store.id)}" ${store.id === (focusedProduct?.storeId || (state.selectedStoreId === "all" ? data.stores[0].id : state.selectedStoreId)) ? "selected" : ""}>${esc(store.name)}</option>`).join("")}</select></div><div class="field"><label for="cost-sku">商品编号</label><input id="cost-sku" name="skuId" maxlength="100" value="${esc(focusedProduct?.skuId || "")}" placeholder="照着订单表里的商品编号填写" required></div><div class="field"><label for="cost-product">商品名称</label><input id="cost-product" name="productName" maxlength="150" value="${esc(focusedProduct?.productName || "")}" placeholder="${esc(skuNames.values().next().value || "可以不填")}"></div><div class="field"><label for="cost-value">每件进货价（元）</label><input id="cost-value" name="unitCost" inputmode="decimal" placeholder="例如 12.50" required></div><div class="field"><label for="cost-from">从哪天开始使用这个价格</label><input id="cost-from" name="effectiveFrom" type="date" value="${localToday()}" required></div><div class="field"><label for="cost-to">哪天停止使用（可以不填）</label><input id="cost-to" name="effectiveTo" type="date"></div><div class="field full"><button class="button" type="submit">保存这个进货价</button></div></form>` : `<div class="empty-inline">请先添加一个店铺。</div>`}</article>
       <article class="card card-pad"><div class="section-title"><div><h2>成本怎么算进利润</h2><p>不用手动算，系统会按订单里的商品数量计算。</p></div></div><div class="formula"><strong>商品成本</strong> = 每件进货价 × 售出数量</div><p class="help-text" style="margin-top:12px">如果商品编号和订单表里的不一样，系统就认不出对应商品。缺少进货价时，利润可能偏高，会在总览里提醒。</p></article></section>
-    <section class="card card-pad" style="margin-top:16px"><div class="section-title"><div><h2>已添加的商品进货价</h2><p>共 ${rows.length} 条</p></div></div>${rows.length ? `<div class="table-wrap"><table><thead><tr><th>店铺</th><th>商品编号</th><th>商品</th><th>每件进货价</th><th>开始日期</th><th>截止日期</th><th>来源</th></tr></thead><tbody>${rows.map((row) => `<tr><td>${esc(storeName(data, row.storeId))}</td><td>${esc(row.skuId)}</td><td>${esc(row.productName || "—")}</td><td>${formatFen(row.unitCostFen)}</td><td>${esc(row.effectiveFrom)}</td><td>${esc(row.effectiveTo || "仍在使用")}</td><td>${esc(row.costSource || "文件导入")}</td></tr>`).join("")}</tbody></table></div>` : `<div class="empty-inline">还没有商品进货价。可以手动添加，或导入成本表。</div>`}</section>`;
+    <section class="card card-pad" style="margin-top:16px"><div class="section-title"><div><h2>已添加的商品进货价</h2><p>共 ${rows.length} 条</p></div></div>${rows.length ? `<div class="table-wrap"><table><thead><tr><th>店铺</th><th>商品编号</th><th>商品</th><th>每件进货价</th><th>开始日期</th><th>截止日期</th><th>来源</th></tr></thead><tbody>${rows.map((row) => `<tr ${focusedProduct?.skuId === row.skuId && focusedProduct?.storeId === row.storeId ? 'id="focused-product-cost"' : ""}><td>${esc(storeName(data, row.storeId))}</td><td>${esc(row.skuId)}</td><td>${esc(row.productName || "—")}</td><td>${formatFen(row.unitCostFen)}</td><td>${esc(row.effectiveFrom)}</td><td>${esc(row.effectiveTo || "仍在使用")}</td><td>${esc(row.costSource || "文件导入")}</td></tr>`).join("")}</tbody></table></div>` : `<div class="empty-inline">还没有商品进货价。可以手动添加，或导入成本表。</div>`}</section>`;
 }
 
 function renderIssues(data) {
@@ -636,10 +713,11 @@ function renderGuide() {
 }
 
 function renderPage(data = state.data) {
-  fillGlobalControls(data);
+  $("#app-shell").dataset.page = state.page;
   const root = $("#page-content");
   const renderers = { overview: renderDashboard, stores: renderStores, import: renderImport, records: renderRecords, costs: renderCosts, issues: renderIssues, settings: renderSettings, guide: () => renderGuide() };
   root.innerHTML = (renderers[state.page] || renderDashboard)(data);
+  fillGlobalControls(data);
   root.focus({ preventScroll: true });
   if (state.page === "settings") updateStorageDetails();
 }
@@ -651,10 +729,11 @@ function setPage(page) {
   renderPage();
 }
 
-function setFilterFromControls() {
+function setFilterFromControls(source) {
   state.selectedStoreId = $("#global-store-select").value || "all";
-  const start = $("#global-start").value;
-  const end = $("#global-end").value;
+  const fromOverview = source?.matches("#overview-start, #overview-end");
+  const start = fromOverview ? $("#overview-start").value : $("#global-start").value;
+  const end = fromOverview ? $("#overview-end").value : $("#global-end").value;
   if (normalizeDate(start) && normalizeDate(end)) {
     state.start = start;
     state.end = end;
@@ -906,7 +985,7 @@ async function requestStoragePersistence() {
 async function exportXlsx() {
   const summary = currentSummary();
   try {
-    downloadWorkbook(state.data, summary, selectedStoreName());
+    downloadWorkbook(state.data, summary, selectedStoreName(), state.lowMarginThreshold);
     toast("Excel 报告已生成并下载。", "ok", 5500);
   } catch (error) { presentError(error, "生成 Excel 失败"); }
 }
@@ -980,6 +1059,22 @@ async function handleClick(event) {
       case "clear-data": await clearBrowserData(); break;
       case "request-persistence": await requestStoragePersistence(); break;
       case "export-xlsx": await exportXlsx(); break;
+      case "focus-product": {
+        const target = control.dataset.target === "costs" ? "costs" : "records";
+        state.focusProduct = { target, storeId: control.dataset.storeId, skuId: control.dataset.skuId, productName: control.dataset.productName };
+        if (control.dataset.storeId) state.selectedStoreId = control.dataset.storeId;
+        if (target === "records") state.recordType = "orderItems";
+        state.page = target;
+        savePrefs();
+        renderPage();
+        window.requestAnimationFrame(() => {
+          const point = target === "costs" ? $("#cost-sku") : $("#focused-product-record");
+          point?.scrollIntoView({ behavior: "smooth", block: "center" });
+          if (target === "costs") point?.focus({ preventScroll: true });
+        });
+        break;
+      }
+      case "clear-product-focus": state.focusProduct = null; renderPage(); break;
       case "resolve-issue": await resolveIssue(control.dataset.issueId); break;
       case "order-status": await resolveOrderStatus(control.dataset.orderId, control.dataset.issueId, control.dataset.resolution); break;
       case "open-issue": {
@@ -1001,7 +1096,15 @@ async function handleClick(event) {
 
 async function handleChange(event) {
   const target = event.target;
-  if (target.matches("#global-store-select, #global-start, #global-end")) { setFilterFromControls(); return; }
+  if (target.matches("#global-store-select, #global-start, #global-end, #overview-start, #overview-end")) { setFilterFromControls(target); return; }
+  if (target.matches("[data-low-margin-threshold]")) {
+    const value = Number(target.value);
+    if (!Number.isFinite(value)) return;
+    state.lowMarginThreshold = Math.max(0, Math.min(50, value));
+    savePrefs();
+    renderPage();
+    return;
+  }
   if (target.matches("[data-record-type]")) { state.recordType = target.value; renderPage(); return; }
   if (target.matches("[data-import-store]")) {
     state.importStoreId = target.value;
